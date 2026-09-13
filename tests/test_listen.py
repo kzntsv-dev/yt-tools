@@ -405,9 +405,30 @@ def _completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> subpr
     return subprocess.CompletedProcess(args=["ffmpeg"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch):
+@pytest.fixture(scope="module")
+def audio_stack():
+    """``(numpy, librosa)`` or a skip ([[issue:75]], [[task:2840]]).
+
+    Both reach the suite only through the ``[audio]`` extra — they are absent
+    from the core install on purpose ([[requirements:46]] D1/D2), so the three
+    pipeline tests below used to raise ``ModuleNotFoundError`` from an import
+    inside their body on a core-only checkout. That reads as a broken suite when
+    the truth is a missing extra, and CI never saw it because CI installs `[full]`.
+
+    Deliberately **not** a module-level ``importorskip``: the parsers,
+    formatters and key-estimation tests above are pure and must keep running
+    without the heavy stack — silently switching them off would trade a visible
+    failure for an invisible loss.
+    """
+    missing = "the [audio] extra is not installed (pip install 'yt-tools-cli[audio]')"
+    np = pytest.importorskip("numpy", reason=missing)
+    librosa = pytest.importorskip("librosa", reason=missing)
+    return np, librosa
+
+
+def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch, audio_stack):
     """Full pipeline with everything stubbed — verifies stdout contract + file plumbing."""
-    import numpy as np
+    np, librosa = audio_stack
 
     cache_dir = tmp_path / "yt-cache" / "dQw4w9WgXcQ"
     audio_dir = cache_dir / "audio"
@@ -434,7 +455,6 @@ def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(listen_mod, "_render_spectrogram", lambda y, sr, out_path, **kw: out_path.write_bytes(b"\x89PNG"))
     monkeypatch.setattr(listen_mod, "_render_chroma", lambda y, sr, out_path: out_path.write_bytes(b"\x89PNG"))
 
-    import librosa
     monkeypatch.setattr(librosa, "load", fake_load)
 
     written = listen_mod.run(
@@ -465,9 +485,9 @@ def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch):
     assert "clip_0100.wav" in names
 
 
-def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch):
+def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch, audio_stack):
     """--no-wav: WAV is created (needed for bpm_detector analyse) then deleted."""
-    import numpy as np
+    np, librosa = audio_stack
 
     audio_dir = tmp_path / "yt-cache" / "dQw4w9WgXcQ" / "audio"
 
@@ -486,7 +506,6 @@ def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(listen_mod, "_bpm_detector_analyse", lambda *a, **k: _fake_bpm_result())
     monkeypatch.setattr(listen_mod, "_render_spectrogram", lambda y, sr, out_path, **kw: out_path.write_bytes(b"\x89PNG"))
 
-    import librosa
     monkeypatch.setattr(librosa, "load", lambda path, sr=22050, mono=True: (np.zeros(sr, dtype=np.float32), sr))
 
     written = listen_mod.run(
@@ -507,9 +526,9 @@ def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch):
     assert not (audio_dir / "clip_0030.wav").exists()
 
 
-def test_bpm_detector_fallback_when_unavailable(tmp_path, capsys, monkeypatch):
+def test_bpm_detector_fallback_when_unavailable(tmp_path, capsys, monkeypatch, audio_stack):
     """When bpm_detector returns None, fallback Krumhansl-Schmuckler kicks in and markdown still has all sections."""
-    import numpy as np
+    np, librosa = audio_stack
 
     audio_dir = tmp_path / "yt-cache" / "dQw4w9WgXcQ" / "audio"
 
@@ -531,7 +550,6 @@ def test_bpm_detector_fallback_when_unavailable(tmp_path, capsys, monkeypatch):
     })
     monkeypatch.setattr(listen_mod, "_render_spectrogram", lambda y, sr, out_path, **kw: out_path.write_bytes(b"\x89PNG"))
 
-    import librosa
     monkeypatch.setattr(librosa, "load", lambda path, sr=22050, mono=True: (np.zeros(sr, dtype=np.float32), sr))
 
     listen_mod.run(

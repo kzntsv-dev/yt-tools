@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.25.0
+version: 0.25.1
 description: Seven YouTube flows, one skill. Discovery `yt-search` ("find a video about X", «найди видео про X», «поищи туториал»). Summary / exploration `yt-transcript` — [mm:ss] anchors, then pick moments and run `yt-frames` ("what's in this video", «о чём видео»). Targeted frames directly by timestamp ("show frame at N", «покажи кадр на N»). Audio FFT `yt-listen` — BPM, key, chords, structure ("what's the BPM", «спектрограмма», «тональность видео»). Metadata `yt-meta` — description, chapters, most-replayed ("video description", «что в описании», «покажи главы»). Comments `yt-comments` ("top comments", «комменты под роликом»). OCR over cached frames `yt-ocr` — silent-with-text fallback ("read text from frames", "captions burned in", «прочти текст с кадров»). Any youtube.com URL. Install once per machine with pipx (`pipx install 'yt-tools-cli[full]'`); `yt-tools doctor` is the read-only preflight that names what is missing. YouTube-only — Vimeo / Twitch / local files need other tools.
 ---
 

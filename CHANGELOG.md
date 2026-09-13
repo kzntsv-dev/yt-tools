@@ -11,6 +11,26 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.25.1] — 2026-09-13
+
+### Fixed
+
+- **`pytest tests/test_listen.py` failed instead of skipping without `[audio]`**
+  ([[issue:75]], [[task:2840]]). The three pipeline tests did `import numpy` /
+  `import librosa` inside their bodies, so on a core-only checkout
+  (`pip install -e ".[test]"`) the suite went red with `ModuleNotFoundError` — a
+  missing *extra* reported as a broken suite. CI never saw it because CI installs
+  `[full]`; contributors did, and so did every session report that carried "3
+  known baseline failures". They now take an `audio_stack` fixture that
+  `importorskip`s both modules — deliberately per test, not module-level: the
+  parser/formatter/key tests above are pure and keep running without the heavy
+  stack, so the fix does not trade a visible failure for an invisible loss.
+
+  Verified on both legs: without `[audio]` → 36 passed, 3 skipped, 0 failed; with
+  `[audio]` → 39 passed (no skips). Test-only change — no PyPI artifact was cut
+  for it (the published 0.25.0 is unchanged), so this version exists in the repo
+  and the public mirror only.
+
 ## [0.25.0] — 2026-09-13
 
 ### Added
