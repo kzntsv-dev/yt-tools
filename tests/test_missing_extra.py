@@ -49,10 +49,16 @@ def _explode(*args, **kwargs):
 # ---- one wording, one source of truth ---------------------------------------
 
 
+# [test-modify: test_frames_refusal_wording_is_exact: was
+#  '  pipx inject yt-tools-cli scenedetect opencv-python'; is the same line with
+#  each spec double-quoted; reason: task:2831 — the hint now formats specs
+#  through one helper (extras.inject_command_for) so a bounded spec like the OCR
+#  pin cannot be re-joined unquoted by a caller; `"` is required for those
+#  bounds, and mixed quoting per extra would be worse than quoting all.]
 def test_frames_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-frames --mode scene", "frames") == (
         "yt-frames --mode scene requires the [frames] extra:\n"
-        "  pipx inject yt-tools-cli scenedetect opencv-python\n"
+        '  pipx inject yt-tools-cli "scenedetect" "opencv-python"\n'
         "  # or\n"
         "  pip install 'yt-tools-cli[frames]'"
     )
@@ -61,16 +67,22 @@ def test_frames_refusal_wording_is_exact():
 def test_audio_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-listen", "audio") == (
         "yt-listen requires the [audio] extra:\n"
-        "  pipx inject yt-tools-cli librosa matplotlib\n"
+        '  pipx inject yt-tools-cli "librosa" "matplotlib"\n'
         "  # or\n"
         "  pip install 'yt-tools-cli[audio]'"
     )
 
 
+# [test-modify: test_ocr_refusal_wording_is_exact: was
+#  '  pipx inject yt-tools-cli rapidocr onnxruntime'; is the same line with the
+#  bound specs, each double-quoted; reason: task:2831 — the injected spec now
+#  carries the `>=3.8,<3.9` pin (an inject bypasses the extra's metadata, so an
+#  unbounded `rapidocr` there installed the broken 3.9.x), and quotes are
+#  required because `>`/`<` are redirections in bash, cmd.exe and PowerShell.]
 def test_ocr_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-ocr", "ocr") == (
         "yt-ocr requires the [ocr] extra:\n"
-        "  pipx inject yt-tools-cli rapidocr onnxruntime\n"
+        '  pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"\n'
         "  # or\n"
         "  pip install 'yt-tools-cli[ocr]'"
     )
@@ -91,9 +103,19 @@ def test_ocr_error_message_comes_from_the_shared_formatter(monkeypatch):
     assert str(exc_info.value) == extras.format_missing_extra("yt-ocr", "ocr")
 
 
+# [test-modify: test_ocr_refuses_when_only_onnxruntime_is_missing: was
+#  `_only_importable(monkeypatch, "rapidocr")`; is `_poison(monkeypatch,
+#  "onnxruntime")`; reason: task:2831 — `_only_importable` patches
+#  `extras.import_module`, which `_load_engine` never calls, so the old form only
+#  passed because rapidocr itself was absent from the venv and the *first*
+#  import raised. With `[ocr]` installed (now the case in CI, and the only way
+#  tests/test_ocr_engine.py can run) the real engine got built here — a model
+#  download inside a unit test, and on rapidocr 3.9 a ValueError instead of the
+#  named refusal. Poisoning the second half of the pair tests what the test
+#  says it tests.]
 def test_ocr_refuses_when_only_onnxruntime_is_missing(monkeypatch):
     """The [ocr] extra is a pair: a half-installed one must not fail later, unnamed."""
-    _only_importable(monkeypatch, "rapidocr")
+    _poison(monkeypatch, "onnxruntime")
     with pytest.raises(ocr_mod.OcrError) as exc_info:
         ocr_mod._load_engine("en")
     assert str(exc_info.value) == extras.format_missing_extra("yt-ocr", "ocr")
@@ -159,7 +181,7 @@ def test_degradation_note_for_audio_keeps_the_shared_wording(monkeypatch, capsys
     err = capsys.readouterr().err
     assert err.startswith("note: harmonic analysis skipped - the [audio] extra is not installed")
     assert "(continuing without it)." in err
-    assert "pipx inject yt-tools-cli librosa matplotlib" in err
+    assert 'pipx inject yt-tools-cli "librosa" "matplotlib"' in err
     assert "pip install 'yt-tools-cli[audio]'" in err
     assert "requires the [audio] extra" not in err, "a degradation must not read as a blocker"
 
@@ -187,7 +209,7 @@ def test_yt_frames_scene_refuses_without_frames_extra(tmp_path, monkeypatch, cap
     err = capsys.readouterr().err
     assert rc != 0, "a missing extra must be a non-zero exit"
     assert "requires the [frames] extra" in err
-    assert "pipx inject yt-tools-cli scenedetect opencv-python" in err
+    assert 'pipx inject yt-tools-cli "scenedetect" "opencv-python"' in err
     assert "pip install 'yt-tools-cli[frames]'" in err
     assert "Traceback" not in err
 
@@ -229,7 +251,7 @@ def test_yt_listen_refuses_without_audio_extra(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc != 0
     assert "requires the [audio] extra" in err
-    assert "pipx inject yt-tools-cli librosa matplotlib" in err
+    assert 'pipx inject yt-tools-cli "librosa" "matplotlib"' in err
     assert "pip install 'yt-tools-cli[audio]'" in err
     assert "Traceback" not in err
 

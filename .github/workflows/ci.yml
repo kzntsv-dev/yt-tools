@@ -20,10 +20,14 @@ jobs:
           python-version: "3.12"
       # The heavy stacks are installed on purpose: a handful of tests exercise the
       # real audio pipeline rather than a mock, and a suite that is red on a clean
-      # machine teaches everyone to ignore it. The light-core contract is covered
-      # by the gate job below, which runs without any extra.
+      # machine teaches everyone to ignore it. `[ocr]` is in the list for the same
+      # reason as the rest: the whole suite mocked the engine factory while the
+      # published extra resolved to a rapidocr whose params schema yt-ocr does not
+      # speak, so a clean `pipx install "yt-tools-cli[ocr]"` broke with the suite
+      # green ([[task:2831]]). tests/test_ocr_engine.py drives the real engine and
+      # needs the network once, for the ~10 MB PP-OCRv5 model.
       - name: Install
-        run: pip install -e ".[full,test]"
+        run: pip install -e ".[full,ocr,test]"
       - name: Unit + CLI smoke tests
         run: pytest -q
 

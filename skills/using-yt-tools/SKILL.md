@@ -1,7 +1,7 @@
 ---
 name: using-yt-tools
-version: 0.24.1
-description: Seven flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. **OCR** (`yt-ocr`, silent-with-text fallback) — RapidOCR PP-OCRv5 over cached frames → `[mm:ss]` blocks as a transcript substitute when `yt-transcript` is empty or the video is silent-instructional (burned-in captions, schematic labels, chord matrices). Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", "read text from frames", "OCR this video", "what does the caption say", "extract overlay text", "captions burned in", "прочти текст с кадров", "OCR этого видео", "silent video с текстом", or any youtube.com URL. CLI installed once per machine with pipx (`pipx install 'yt-tools-cli[full]'` adds the audio/chord stack); `yt-tools doctor` is the read-only preflight that names whatever is missing. YouTube-only — for Vimeo / Twitch / local files use other tools.
+version: 0.24.2
+description: Seven YouTube flows, one skill. Discovery `yt-search` ("find a video about X", «найди видео про X», «поищи туториал»). Summary / exploration `yt-transcript` — [mm:ss] anchors, then pick moments and run `yt-frames` ("what's in this video", «о чём видео»). Targeted frames directly by timestamp ("show frame at N", «покажи кадр на N»). Audio FFT `yt-listen` — BPM, key, chords, structure ("what's the BPM", «спектрограмма», «тональность видео»). Metadata `yt-meta` — description, chapters, most-replayed ("video description", «что в описании», «покажи главы»). Comments `yt-comments` ("top comments", «комменты под роликом»). OCR over cached frames `yt-ocr` — silent-with-text fallback ("read text from frames", "captions burned in", «прочти текст с кадров»). Any youtube.com URL. Install once per machine with pipx (`pipx install 'yt-tools-cli[full]'`); `yt-tools doctor` is the read-only preflight that names what is missing. YouTube-only — Vimeo / Twitch / local files need other tools.
 ---
 
 # using-yt-tools
@@ -106,13 +106,15 @@ Seven distinct flows, picked by user intent:
   → Read `<vid>/ocr.md` as a transcript substitute (per-timestamp
   `[mm:ss]` blocks, same paradigm) → continue into Flow B at the
   interesting timestamps if you need the original frames.
-- **Requires the `[ocr]` extra** — `rapidocr` + `onnxruntime`. If
-  missing on the running yt-tools install, `yt-ocr` exits nonzero with
-  both install hints (`pipx inject yt-tools-cli rapidocr onnxruntime` /
-  `pip install 'yt-tools-cli[ocr]'`). The plugin's SessionStart hook
-  installs `[full]` (core + `[frames]` + `[audio]`, plus a
-  best-effort `bpm-detector` inject) only, **not** `[ocr]` — first run
-  of Flow F on a machine may need the inject step.
+- **Requires the `[ocr]` extra** — `rapidocr` + `onnxruntime`, **not** part of
+  `[full]`. If missing on the running yt-tools install, `yt-ocr` exits nonzero
+  with both install hints (`pipx inject yt-tools-cli "rapidocr>=3.8,<3.9"
+  "onnxruntime>=1.18"` / `pip install 'yt-tools-cli[ocr]'`). The plugin's
+  SessionStart hook installs `[full]` (core + `[frames]` + `[audio]`, plus a
+  best-effort `bpm-detector` inject) only, **not** `[ocr]` — first run of Flow F
+  on a machine may need the inject step. `yt-ocr` reads
+  `./yt-cache/<vid>/frames/`, so either run `yt-frames` first or pass
+  `--timestamps` (which extracts for you).
 - Trigger phrases: "read text from frames", "OCR this video", "what
   does the caption say", "extract overlay text", "captions burned in",
   "silent video with text on screen", «прочти текст с кадров», «OCR
@@ -138,14 +140,22 @@ Install once per machine — one command, the same in every harness. The
 commands stay `yt-tools`; the import name is `yt_tools`):
 
 ```bash
-# from PyPI — core + [frames] + [audio], i.e. every flow except OCR
+# from PyPI — [full] = core + [frames] + [audio]. NOT OCR (see below).
 pipx install "yt-tools-cli[full]"
 
 # core only (transcript / meta / comments / search / cache)
 pipx install yt-tools-cli
 
 # reproducible: pin the exact version
-pipx install "yt-tools-cli[full]==0.23.1"
+pipx install "yt-tools-cli[full]==0.24.2"
+
+# OCR (explicit extra, ~10 MB model fetched on first run). Naming it in the
+# install lets pip resolve it from the metadata, bounds included:
+pipx install "yt-tools-cli[full,ocr]"
+# already installed? widen in place — `rapidocr` is capped below 3.9, where the
+# PP-OCRv5 params yt-ocr builds no longer resolve (quote the specs: `>`/`<` are
+# redirections in bash, cmd.exe and PowerShell):
+pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
 ```
 
 From a checkout instead of PyPI (the plugin path, or tracking `master`):
@@ -154,7 +164,8 @@ From a checkout instead of PyPI (the plugin path, or tracking `master`):
 pipx install 'git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]'
 ```
 
-The `[full]` extra is core + `[frames]` + `[audio]`. Chord progression,
+The `[full]` extra is core + `[frames]` + `[audio]` — a flow default, not
+"everything": OCR and `bpm-detector` are both outside it. Chord progression,
 structural segments and the refined BPM/key in `yt-listen` come from
 `bpm-detector`, which is **not on PyPI** and therefore cannot live in the
 published metadata — the Python package index rejects direct VCS references.
@@ -165,8 +176,7 @@ pipx inject yt-tools-cli "bpm-detector @ git+https://github.com/libraz/bpm-detec
 ```
 
 Without it `yt-listen` still runs (librosa-only BPM/key, unfilled sections marked
-`n/a`). `[ocr]` is always an explicit extra: `pipx inject yt-tools-cli rapidocr
-onnxruntime`.
+`n/a`).
 
 Some harnesses do this for you: if your host ships the bundled yt-tools plugin
 (Claude Code does), its `SessionStart` hook pipx-installs the `[full]` set from
@@ -522,9 +532,9 @@ All failures abort cleanly; never leave a half-finished state.
 | `Subtitles disabled` / `no captions in the requested language(s)` / `the transcript API returned nothing usable (ParseError: …)` from `yt-transcript` | Captions are absent (channel-disabled, wrong `--lang`, or YouTube answered with an empty body — the last one used to surface as a bare `no element found: line 1, column 0`). The message names the reason and both fallbacks. | Fatal for Flow A — tell the user the reason, and switch: Flow C (`yt-listen`) for audio, Flow F (`yt-ocr`) for text burned into the frames. Try another `--lang` first only when the reason says the *requested language* is missing. `yt-watch` on the same video does **not** fail — it writes a frames-only `watch.md` with the reason in its header, so read the frames and say that the text layer is absent. |
 | Flow B/D — `yt-frames --mode scene requires the [frames] extra` / `yt-watch requires the [frames] extra` | `scenedetect` / `opencv-python` not in the active pipx venv | Exit code 1, nothing was downloaded. Tell the user the command the CLI printed (`pipx inject yt-tools-cli scenedetect opencv-python` or `pip install 'yt-tools-cli[frames]'`). Fallbacks that need no install: Flow D with an explicit `--timestamps` list, or `--mode interval` (which still runs and announces on stderr that near-duplicate dedup was skipped). |
 | Flow C — `yt-listen requires the [audio] extra` | `librosa` / `matplotlib` not in the active pipx venv | Exit code 1. Same shape: print the command the CLI named. Until it is installed, Flow A (transcript) and Flow F (`yt-ocr`) are the alternatives for this video. |
-| Flow F — `yt-ocr requires the [ocr] extra` | `rapidocr` / `onnxruntime` not in the active pipx venv | Run the inject command the CLI printed: `pipx inject yt-tools-cli rapidocr onnxruntime` (or `pip install 'yt-tools-cli[ocr]'` in non-pipx setups). The plugin's SessionStart hook installs `[full]`, not `[ocr]`, so first run typically needs this. |
+| Flow F — `yt-ocr requires the [ocr] extra` | `rapidocr` / `onnxruntime` not in the active pipx venv | Run the inject command the CLI printed: `pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"` (or `pip install 'yt-tools-cli[ocr]'` in non-pipx setups). The bound is load-bearing: an inject resolves from PyPI directly, and 3.9 fails at engine construction. The plugin's SessionStart hook installs `[full]`, not `[ocr]`, so first run typically needs this. |
 | Flow F — `no cached frames in …/frames` | Batch-on-cache mode but `yt-frames` wasn't run yet (or wrote elsewhere) | Either run `yt-frames URL --mode scene --scene-threshold 12` (or `--mode interval --interval 15s`) first, or re-invoke `yt-ocr URL --timestamps T1,T2,…` to let it do extraction inline. |
-| Flow F — RapidOCR model download fails (offline / firewall) | First-run lazy-download of PP-OCRv5 ONNX weights to `~/.cache/rapidocr/` blocked | Print the captured error; let the user re-run with network access. Don't retry. |
+| Flow F — RapidOCR model download fails (offline / firewall) | First-run lazy-download of PP-OCRv5 ONNX weights blocked | Print the captured error; let the user re-run with network access. Don't retry. |
 | User passed a non-YouTube URL (Vimeo / Twitch / local mp4) | Out of scope | Stop; say the skill is YouTube-only. |
 
 ## Side effects
@@ -538,9 +548,11 @@ All failures abort cleanly; never leave a half-finished state.
   - `<video-id>/source.mp4` (≤ 720p; produced by Flows A/B/C unless `--no-cache-source`; **not** by 0/D/E; produced by Flow F **only** when `--timestamps` triggers extraction)
   - `<video-id>/frames/frame_<mmss>.jpg` per extracted frame (also re-read by Flow F); a sub-second moment carries its milliseconds (`frame_0130_250.jpg` = 90.25 s), so two frames in one second never overwrite each other and stdout's `Wrote:` count equals the files on disk
   - `<video-id>/audio/{clip,spectrum,features}_<mmss>.{wav,png,md}` (Flow C)
-- Flow F also lazy-downloads RapidOCR PP-OCRv5 ONNX weights to
-  `~/.cache/rapidocr/` on first invocation with a given `--language`
-  (~10 MB per language model).
+- Flow F also lazy-downloads RapidOCR PP-OCRv5 ONNX weights on first
+  invocation with a given `--language` (~8 MB for the english recognizer plus the
+  shared detector). In RapidOCR 3.8.x they land in the installed package's own
+  `rapidocr/models/` directory — not in `~/.cache/`, which is where this line
+  claimed they went until a clean-venv check (2026-09-13).
 - Network: `yt-dlp` pulls metadata + optionally `source.mp4`;
   `youtube-transcript-api` pulls subs; Flow E additionally paginates the
   comment feed (the one heavy network path — minutes on viral videos).

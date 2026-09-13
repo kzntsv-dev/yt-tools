@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools-cli"
-version = "0.24.1"
+version = "0.24.2"
 description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), and OCR over cached frames for silent-with-text videos."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -79,7 +79,18 @@ full = [
     "matplotlib>=3.8",
 ]
 ocr = [
-    "rapidocr>=3.8",
+    # Capped below 3.9 on purpose ([[task:2831]], [[issue:77]]). 3.9 moved the
+    # bundled defaults to ``ocr_version=PP-OCRv6, model_type=small``; ocr.py
+    # overrides the ocr_version to PP-OCRv5 but leaves model_type at that
+    # default, and PP-OCRv5 ships ``mobile``/``server`` only — so "PP-OCRv5 small"
+    # resolves to nothing (the lenient prefix fallback finds no candidate either)
+    # and RapidOCR raises ``error: Invalid OCR configuration`` at construction.
+    # A clean ``pipx install "yt-tools-cli[ocr]"`` therefore installed 3.9.2 and
+    # every ``yt-ocr`` run died. Lift the cap only in the change that teaches
+    # ocr.py the 3.9 model matrix (pin ``model_type`` explicitly, then re-check
+    # every ``--language``) — tests/test_ocr_engine.py drives the real engine and
+    # fails if the pin comes off alone.
+    "rapidocr>=3.8,<3.9",
     "onnxruntime>=1.18",
 ]
 test = ["pytest>=7.0"]

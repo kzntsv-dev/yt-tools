@@ -11,6 +11,60 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.24.2] — 2026-09-13
+
+### Fixed
+
+- **`yt-ocr` on a clean `[ocr]` install** ([[issue:77]], [[task:2831]]). The extra
+  declared `rapidocr>=3.8`, so the resolver picked 3.9.2 — where the bundled
+  defaults moved to PP-OCRv6 with `model_type=small`, while PP-OCRv5 (which
+  `yt_tools/ocr.py` pins) ships `mobile`/`server` only. Engine construction died
+  with `error: Invalid OCR configuration`, i.e. the install did exactly what the
+  metadata asked and the first `yt-ocr` run failed. `[ocr]` now reads
+  `rapidocr>=3.8,<3.9`, with the reason in the metadata, and the bound is lifted
+  only in the change that teaches `ocr.py` the 3.9 model matrix.
+- **The `pipx inject` hint installed the version the extra excludes.** The
+  refusal, `doctor`'s `next_step` and the README all printed
+  `pipx inject yt-tools-cli rapidocr onnxruntime` — an inject resolves from PyPI
+  directly, so following the message reproduced the bug above. The hint now
+  carries the same bound as the extra (one constant, pinned equal by test) and
+  double-quotes every spec, because `>` and `<` are redirections in bash,
+  cmd.exe and PowerShell alike; `doctor` formats its multi-extra command through
+  the same helper instead of re-joining the list.
+
+### Added
+
+- **A real-engine test for the `[ocr]` extra** (`tests/test_ocr_engine.py`).
+  Every yt-ocr integration test mocked `_load_engine`, so the whole suite stayed
+  green while the published extra was broken — the mocked seam was the broken
+  seam. The new test builds the engine through `_load_engine` and OCRs a frame
+  it renders itself (OpenCV's built-in Hershey font, no binary fixture), and the
+  CI `pytest` job installs `[full,ocr,test]` so it cannot pass by being skipped.
+  Verified against both ends: rapidocr 3.9.2 → the `Invalid OCR configuration`
+  failure above, 3.8.4 → text read back and a non-empty `ocr.md`.
+- **A guard on the skill description length.** `using-yt-tools`'s description was
+  2511 characters as the YAML scalar (2261 as the host measured it) against a
+  1024 cap — the part the host matches triggers on, so a harness reported the
+  skill as conflicted. Trimmed to 987 with prose cut and every flow name and
+  trigger phrase kept; the new test fails on growth and on a trim that drops a
+  flow's command name.
+
+### Changed
+
+- **Docs corrected against a real machine install** ([[wiki:3595]]): `[full]` is
+  a flow default, **not** "everything" — it excludes `[ocr]` and carries no
+  `bpm-detector` VCS dependency, so chord progression / structural segments need
+  the inject and read `n/a` without it; the OCR section names the `rapidocr`
+  bound; the standalone install block offers
+  `pipx install "yt-tools-cli[full,ocr]"` (metadata-resolved) alongside the
+  bounded inject, and pins `0.24.2`; `yt-frames` is documented as requiring
+  `--timestamps` or `--mode {interval|scene}`, and `yt-ocr` as reading
+  `./yt-cache/<vid>/frames/` unless given `--timestamps`.
+- **The OCR model path.** The README and skill claimed the PP-OCRv5 weights land
+  in `~/.cache/rapidocr/`. In RapidOCR 3.8.x they land in the installed package's
+  own `rapidocr/models/` directory — found while running the clean-venv
+  acceptance, so the claim is replaced by the measured one.
+
 ## [0.24.1] — 2026-09-13
 
 ### Fixed

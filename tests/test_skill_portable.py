@@ -73,6 +73,37 @@ def test_frontmatter_description_is_install_neutral():
     assert "pipx install" in description, "the trigger text should name the neutral install path"
 
 
+#: The host's cap on a skill description. Measured, not chosen: a harness that
+#: loads this skill reported `description exceeds 1024 characters (2261)` — and
+#: nothing in this repo objected, because every other test here reads the
+#: frontmatter as free-form text. This test measures the raw YAML scalar, which
+#: reads a little longer (2511 before the trim); every measure of the old text
+#: was over the cap, which is the only part that matters.
+DESCRIPTION_MAX_CHARS = 1024
+
+
+def test_frontmatter_description_fits_the_host_limit():
+    """A description that does not fit is not installed — it is reported.
+
+    The description is the *only* part of the skill the host matches triggers
+    against, so overflowing it does not degrade the skill gracefully: the host
+    either refuses it or truncates the trigger list, and `yt-ocr` / `yt-listen`
+    become unreachable flows with a green suite ([[task:2831]] run, 2026-09-13).
+    Keep the trim honest by cutting prose, never trigger phrases — a shorter
+    description that no longer names a flow is a different bug.
+    """
+    description = re.search(r"^description:\s*(.+)$", _frontmatter(_text()), re.MULTILINE)
+    assert description, "the frontmatter has no description: line"
+    description = description.group(1).strip()
+    assert len(description) <= DESCRIPTION_MAX_CHARS, (
+        f"the description is {len(description)} chars, over the {DESCRIPTION_MAX_CHARS} "
+        "the host allows — trim prose, keep the trigger phrases"
+    )
+    # ...and the trim must not have traded triggers away for room.
+    for command in ("yt-search", "yt-transcript", "yt-frames", "yt-listen", "yt-meta", "yt-comments", "yt-ocr"):
+        assert command in description, f"the description stopped naming {command}"
+
+
 # ---- a named harness is always an option, never the flow --------------------
 
 

@@ -27,7 +27,9 @@ has to guess where the artefact landed:
   text (schematic labels, chord matrices, parameter walkthroughs). Needs
   the `[ocr]` extra.
 - `yt-listen` — FFT audio analysis: per-timestamp clip + mel-spectrogram PNG +
-  features `.md` with BPM, key, chord progression, and spectral statistics.
+  features `.md` with BPM, key, and spectral statistics (chord progression and
+  structural segments come from the optional `bpm-detector` enrichment —
+  [see below](#installing-bpm-detector); without it those rows read `n/a`).
 - `yt-watch` — combined transcript + scene-frames in one `.md` with
   `![](frames/...)` sidecar embeds.
 - `yt-tools cache list | prune` — manage the source-mp4 cache.
@@ -35,8 +37,8 @@ has to guess where the artefact landed:
 ## Installation
 
 `yt-tools` v1 ships **via a Claude Code plugin** (recommended for agent
-workflows) or **directly from this Git repository** (for standalone CLI
-use in any environment). PyPI distribution is deferred to a future release.
+workflows), **from PyPI** as the distribution `yt-tools-cli`, or **directly from
+this Git repository** (a checkout, or anyone tracking `master`).
 
 ### As a Claude Code plugin (recommended for agent workflows)
 
@@ -95,14 +97,23 @@ every console command stay `yt-tools`, and the import name stays `yt_tools`.
 python -m pip install --user pipx
 python -m pipx ensurepath          # adds ~/.local/bin to PATH; restart shell after
 
-# 2. install from PyPI — core + [frames] + [audio], i.e. every flow except OCR
+# 2. install from PyPI — [full] = core + [frames] + [audio]
+#    NOTE: [full] does NOT include OCR (see the next command)
 pipx install "yt-tools-cli[full]"
 
 # reproducible: pin the exact version
-pipx install "yt-tools-cli[full]==0.23.1"
+pipx install "yt-tools-cli[full]==0.24.2"
 
-# [ocr] is always separate and explicit (its ONNX model is ~10 MB, fetched lazily)
-pipx inject yt-tools-cli rapidocr onnxruntime
+# OCR is always an explicit extra (its ONNX model is ~10 MB, fetched lazily).
+# Preferred: name it at install time, so pip resolves it from the metadata —
+# bounds included — instead of from PyPI's "latest":
+pipx install "yt-tools-cli[full,ocr]"
+
+# Already installed? Widen the venv in place. Quote the specs: `>` and `<` are
+# redirections in bash, cmd.exe and PowerShell. `rapidocr` is capped below 3.9
+# because 3.9 moved the bundled defaults to PP-OCRv6, where the PP-OCRv5 params
+# yt-ocr builds no longer resolve (see the OCR section).
+pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
 ```
 
 `uv` users: `uv tool install "yt-tools-cli[full]"`, or for a one-off run
@@ -114,6 +125,11 @@ pipx inject yt-tools-cli rapidocr onnxruntime
 ```bash
 pipx install 'git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]'
 ```
+
+> **Which Python.** The ceiling is real: `requires-python` is `>=3.10,<3.13`, so
+> on a machine whose only interpreter is 3.13 the install is refused by
+> `pip`/`pipx` (`librosa` 3.13 friction holds the ceiling — see Requirements).
+> Install a 3.12 interpreter, or point pipx at one: `pipx install --python 3.12 …`.
 
 > **Changing the extras of an existing install.** `pipx uninstall yt-tools-cli`
 > first, then install the new extras set. `pipx install --force` on an existing
@@ -134,12 +150,20 @@ matplotlib. Heavier stacks are opt-in, per flow.
 | core (no extras) | `youtube-transcript-api`, `yt-dlp` | `yt-transcript`, `yt-meta`, `yt-comments`, `yt-search`, `yt-tools cache`; `yt-frames --timestamps` / `--mode interval` (without near-duplicate dedup) |
 | `[frames]` | `scenedetect[opencv]` (OpenCV) | `yt-frames --mode scene`, `yt-watch`, and dedup in the other frame modes |
 | `[audio]` | `librosa`, `matplotlib` | `yt-listen` (spectral features, spectrogram, BPM/key) |
-| `[ocr]` | `rapidocr`, `onnxruntime` | `yt-ocr` (PP-OCRv5; ONNX model downloaded on first run) |
-| `[full]` | core + `[frames]` + `[audio]` | everything above except `yt-ocr` — this is what the plugin hook installs |
+| `[ocr]` | `rapidocr>=3.8,<3.9`, `onnxruntime` | `yt-ocr` (PP-OCRv5; ONNX model downloaded on first run) |
+| `[full]` | core + `[frames]` + `[audio]` | the plugin default: every flow above **except `yt-ocr`** |
+
+`[full]` is a *flow* default, not "everything". Two things stay outside it on
+purpose: `[ocr]` (the ~10 MB ONNX model is always an explicit opt-in) and
+`bpm-detector` (not on PyPI — see below). If you want one install that runs every
+CLI in this README, name both: `pipx install "yt-tools-cli[full,ocr]"` plus the
+inject below.
 
 #### Installing bpm-detector
 
-`[full]` deliberately stops at `[frames]` + `[audio]`. The optional
+`[full]` deliberately stops at `[frames]` + `[audio]`: it carries **no VCS
+dependency**, so nothing a user installs from PyPI hits a Git remote (the plugin
+hook injects this one separately, best-effort). The optional
 [`bpm-detector`](https://github.com/libraz/bpm-detector) enrichment (chord
 progression, structural segments, refined BPM, a confidence-scored key per
 timestamp) is not on PyPI, so it can only be a PEP 508 *direct reference* — and
@@ -402,11 +426,17 @@ models via `onnxruntime`).
 ```bash
 # 1) extract frames first (lower scene threshold catches overlay fades
 #    within the same shot; or use --mode interval for a denser sample)
+#    yt-frames needs a mode: it will not guess between interval and scene.
+#    (--mode scene needs the [frames] extra; --mode interval does not.)
 yt-frames URL --mode scene --scene-threshold 12
 # or:
 yt-frames URL --mode interval --interval 15s
+# or, for named moments — no mode flag, no [frames] extra:
+yt-frames URL --timestamps 1:30,2:45
 
 # 2) OCR every cached frame → markdown with [mm:ss] anchors
+#    yt-ocr reads ./yt-cache/<vid>/frames/ — it extracts nothing on its own
+#    unless you give it --timestamps (which calls the yt-frames helper for you).
 yt-ocr URL
 # → ./yt-cache/<vid>/ocr.md
 
@@ -425,16 +455,26 @@ per detected text region, an explicit `_(no text detected)_` marker for
 frames where the engine returned nothing (so an agent can tell the frame
 was checked vs. silently omitted).
 
-> **Install the `[ocr]` extra.** RapidOCR and `onnxruntime` are **not**
-> in the core install. If `yt-ocr` exits with the missing-extra hint,
-> run:
+> **Install the `[ocr]` extra.** RapidOCR and `onnxruntime` are **not** in the
+> core install — and **not** in `[full]` either. If `yt-ocr` exits with the
+> missing-extra hint, run:
 > ```bash
-> pipx inject yt-tools-cli rapidocr onnxruntime
+> pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
 > # or for non-pipx setups:
 > pip install 'yt-tools-cli[ocr]'
 > ```
-> First run with a given `--language` lazy-downloads a ~10 MB PP-OCRv5
-> ONNX model into `~/.cache/rapidocr/`.
+> First run with a given `--language` lazy-downloads the PP-OCRv5 ONNX models
+> (~8 MB for the english recognizer, plus the shared detector). In RapidOCR 3.8.x
+> they land in the installed package's own `rapidocr/models/` directory, not in
+> `~/.cache/` — verified on a clean venv.
+>
+> The `rapidocr` bound is not decoration: 3.9 moved the bundled defaults to
+> PP-OCRv6 with `model_type=small`, and PP-OCRv5 ships `mobile`/`server` only —
+> the v5 detector the CLI asks for resolves to nothing there, so a 3.9 install
+> fails at engine construction with `error: Invalid OCR configuration`. The
+> `[ocr]` extra carries the bound, and so does the `pipx inject` line above: an
+> inject resolves from PyPI directly and would otherwise install the version the
+> extra exists to exclude.
 
 ### Cache hygiene
 
@@ -510,8 +550,10 @@ scripts trivial.
 - **Scene threshold:** 27 (PySceneDetect `ContentDetector` default; lower =
   more sensitive).
 - **`yt-listen` defaults:** 8-second clip per timestamp, mel-spectrogram at
-  default `librosa` settings, full feature set when `[full]` extra is
-  installed.
+  default `librosa` settings; BPM/key/spectral features when the `[audio]` extra
+  is installed, chord progression and structural segments only when
+  `bpm-detector` has been injected as well — on a plain `[full]` install those
+  rows are `n/a`, not silently absent.
 
 ## Requirements
 

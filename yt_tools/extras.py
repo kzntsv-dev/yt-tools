@@ -34,11 +34,17 @@ EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "ocr": ("rapidocr", "onnxruntime"),
 }
 
-# extra → distribution names for the ``pipx inject`` hint.
+# extra → install specs for the ``pipx inject`` hint. These are what the user
+# actually pastes, and an inject resolves them *outside* the extra's metadata —
+# so a bound that matters has to be repeated here or the hint contradicts the
+# extra it is advertising: `pipx inject yt-tools-cli rapidocr` used to resolve
+# 3.9.x while `[ocr]` said <3.9, i.e. the refusal message itself installed the
+# broken pair ([[task:2831]]). tests/test_packaging.py pins the OCR entries to
+# the requirement strings in pyproject.toml so the two routes cannot drift.
 EXTRA_PACKAGES: dict[str, tuple[str, ...]] = {
     "frames": ("scenedetect", "opencv-python"),
     "audio": ("librosa", "matplotlib"),
-    "ocr": ("rapidocr", "onnxruntime"),
+    "ocr": ("rapidocr>=3.8,<3.9", "onnxruntime>=1.18"),
 }
 
 #: The enrichment that cannot be a package extra. ``bpm-detector`` gives
@@ -92,8 +98,24 @@ def inject_command(extra: str) -> str:
     refusal and the recommendation must not drift apart.
     """
     _check_extra(extra)
-    packages = " ".join(EXTRA_PACKAGES[extra])
-    return f"pipx inject {DISTRIBUTION} {packages}"
+    return inject_command_for([extra])
+
+
+def inject_command_for(extra_names: list[str] | tuple[str, ...]) -> str:
+    """One command adding several extras — what ``doctor``'s ``next_step`` prints.
+
+    Every spec is double-quoted: an injected spec can carry version bounds
+    (``rapidocr>=3.8,<3.9``), and an unquoted ``>``/``<`` is a redirection in
+    bash, cmd.exe and PowerShell alike — the printed command has to be
+    pasteable, since being pasteable is the whole point of it.
+    """
+    specs = [spec for name in extra_names for spec in _specs(name)]
+    return f"pipx inject {DISTRIBUTION} " + " ".join(f'"{spec}"' for spec in specs)
+
+
+def _specs(extra: str) -> tuple[str, ...]:
+    _check_extra(extra)
+    return EXTRA_PACKAGES[extra]
 
 
 def module_missing(name: str) -> bool:

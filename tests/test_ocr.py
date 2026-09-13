@@ -183,6 +183,11 @@ def test_render_zero_frames_still_emits_header():
 # --- _load_engine: friendly missing-extra hint -------------------------------
 
 
+# [test-modify: test_load_engine_friendly_hint_when_rapidocr_missing: was
+#  `assert "pipx inject yt-tools-cli rapidocr onnxruntime" in msg`; is the same
+#  with the quoted, bounded specs; reason: task:2831 — the hint carries the
+#  rapidocr pin (an inject bypasses the extra metadata) and quotes every spec so
+#  the pasted command is safe in bash/cmd/PowerShell.]
 def test_load_engine_friendly_hint_when_rapidocr_missing(monkeypatch):
     """Stick None into sys.modules['rapidocr'] so `from rapidocr import ...`
     raises ImportError; verify the friendly hint is built into the error."""
@@ -190,7 +195,7 @@ def test_load_engine_friendly_hint_when_rapidocr_missing(monkeypatch):
     with pytest.raises(OcrError) as exc_info:
         ocr_mod._load_engine("en")
     msg = str(exc_info.value)
-    assert "pipx inject yt-tools-cli rapidocr onnxruntime" in msg
+    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"' in msg
     assert "pip install 'yt-tools-cli[ocr]'" in msg
 
 
@@ -289,7 +294,7 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
     def _raise(_lang):
         raise OcrError(
             "yt-ocr requires the [ocr] extra:\n"
-            "  pipx inject yt-tools-cli rapidocr onnxruntime\n"
+            '  pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"\n'
             "  # or\n"
             "  pip install 'yt-tools-cli[ocr]'"
         )
@@ -299,7 +304,7 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
 
     assert rc == 1
     err = capsys.readouterr().err
-    assert "pipx inject yt-tools-cli rapidocr onnxruntime" in err
+    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"' in err
     assert "pip install 'yt-tools-cli[ocr]'" in err
 
 

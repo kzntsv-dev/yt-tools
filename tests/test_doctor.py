@@ -85,11 +85,17 @@ def test_extras_that_are_installed_are_ok(monkeypatch, tmp_path):
     assert report.can_proceed is True
 
 
+# [test-modify: test_extra_check_reuses_the_shared_install_command: was
+#  `assert fix == "pipx inject yt-tools-cli scenedetect opencv-python"`; is the
+#  same via `extras.inject_command_for`; reason: task:2831 — doctor's one command
+#  is now formatted by the shared helper (specs double-quoted, bounded specs like
+#  the OCR pin safe to paste), so the literal here must move with it.]
 def test_extra_check_reuses_the_shared_install_command(monkeypatch, tmp_path):
     _only_importable(monkeypatch)
     fix = _by_name(doctor.collect(tmp_path, which=_which(BOTH_BINS)))["extra:frames"].fix
     assert fix == extras.inject_command("frames")
-    assert fix == "pipx inject yt-tools-cli scenedetect opencv-python"
+    assert fix == extras.inject_command_for(["frames"])
+    assert fix == 'pipx inject yt-tools-cli "scenedetect" "opencv-python"'
 
 
 # ---- AC4: a missing binary is the blocker -----------------------------------

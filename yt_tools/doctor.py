@@ -127,11 +127,12 @@ class Report:
         if self.blockers:
             return None
         if self.missing_extras:
-            packages = " ".join(p for e in self.missing_extras for p in extras.EXTRA_PACKAGES[e])
             # Built from the same constant the refusals use: a rename that missed
             # this copy would make the report recommend a package that does not
-            # exist ([[wiki:3589]]).
-            return f"pipx inject {extras.DISTRIBUTION} {packages}"
+            # exist ([[wiki:3589]]). Bound specs (the OCR pin) mean the one
+            # command must be formatted by the same helper too, not re-joined
+            # here — an unquoted ``>=`` is a redirect ([[task:2831]]).
+            return extras.inject_command_for(self.missing_extras)
         for check in self.checks:
             if check.status == WARN and check.fix:
                 return check.fix
