@@ -66,7 +66,7 @@ def test_bare_core_reports_missing_extras_but_still_allows_light_flows(monkeypat
     assert report.can_proceed is True
     assert report.blockers == ()
     assert report.next_step is not None
-    assert report.next_step.startswith("pipx inject yt-tools ")
+    assert report.next_step.startswith("pipx inject yt-tools-cli ")
     for package in ("scenedetect", "librosa", "matplotlib", "rapidocr"):
         assert package in report.next_step
 
@@ -83,7 +83,7 @@ def test_extra_check_reuses_the_shared_install_command(monkeypatch, tmp_path):
     _only_importable(monkeypatch)
     fix = _by_name(doctor.collect(tmp_path, which=_which(BOTH_BINS)))["extra:frames"].fix
     assert fix == extras.inject_command("frames")
-    assert fix == "pipx inject yt-tools scenedetect opencv-python"
+    assert fix == "pipx inject yt-tools-cli scenedetect opencv-python"
 
 
 # ---- AC4: a missing binary is the blocker -----------------------------------
@@ -111,7 +111,7 @@ def test_missing_yt_dlp_blocks_and_names_the_exact_command(monkeypatch, tmp_path
     assert yt_dlp.status == "missing"
     assert yt_dlp.required is True
     assert report.can_proceed is False
-    assert report.next_step == "pipx inject yt-tools yt-dlp"
+    assert report.next_step == "pipx inject yt-tools-cli yt-dlp"
 
 
 @pytest.mark.parametrize(
@@ -176,7 +176,7 @@ def test_a_blocker_without_a_fix_yields_no_next_step():
     report = doctor.Report(
         checks=(
             doctor.Check("ffmpeg", doctor.MISSING, "not found on PATH", required=True),
-            doctor.Check("extra:audio", doctor.MISSING, "not installed", fix="pipx inject yt-tools librosa"),
+            doctor.Check("extra:audio", doctor.MISSING, "not installed", fix="pipx inject yt-tools-cli librosa"),
         )
     )
     assert report.can_proceed is False
@@ -190,7 +190,7 @@ def test_every_blocker_that_can_occur_names_a_fix(monkeypatch, tmp_path):
 
     assert [c.name for c in report.blockers] == ["yt-dlp", "ffmpeg"]
     assert all(c.fix for c in report.blockers)
-    assert report.next_step == "pipx inject yt-tools yt-dlp"
+    assert report.next_step == "pipx inject yt-tools-cli yt-dlp"
 
 
 def test_a_supported_python_is_ok(monkeypatch, tmp_path):

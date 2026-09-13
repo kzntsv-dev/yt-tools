@@ -13,6 +13,15 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+#: The **distribution** name — what ``pip``/``pipx`` resolve and what PyPI accepts.
+#: Deliberately not the project name: ``yt-tools`` is unregisterable on PyPI (its
+#: similarity folding collides with the existing ``yttools``, wiki:3589), while
+#: the project, repo, plugin and every console command stay ``yt-tools``. Three
+#: places must agree on this string — here (install metadata by name),
+#: ``pyproject.toml`` (what gets uploaded) and :func:`yt_tools.extras.inject_command`
+#: (the advice every refusal prints); ``tests/test_distribution_name.py`` pins them.
+DISTRIBUTION = "yt-tools-cli"
+
 _PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 _VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 UNKNOWN_VERSION = "0.0.0+unknown"
@@ -49,7 +58,7 @@ def _installed_version() -> str | None:
     from importlib import metadata
 
     try:
-        return metadata.version("yt-tools")
+        return metadata.version(DISTRIBUTION)
     except metadata.PackageNotFoundError:
         return None
 
@@ -74,4 +83,4 @@ def __dir__() -> list[str]:
     return sorted({*globals(), "__version__"})
 
 
-__all__ = ["__version__", "UNKNOWN_VERSION", "version_from_pyproject"]
+__all__ = ["DISTRIBUTION", "__version__", "UNKNOWN_VERSION", "version_from_pyproject"]

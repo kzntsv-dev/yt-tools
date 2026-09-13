@@ -62,8 +62,8 @@ fi
 
 # 2. Probe yt-tools — install or update from plugin clone ──────────────────
 installed_version=""
-if pipx_run list --short 2>/dev/null | grep -q '^yt-tools '; then
-    installed_version=$(pipx_run list --short 2>/dev/null | awk '/^yt-tools / {print $2}')
+if pipx_run list --short 2>/dev/null | grep -q '^yt-tools-cli '; then
+    installed_version=$(pipx_run list --short 2>/dev/null | awk '/^yt-tools-cli / {print $2}')
 fi
 
 needs_install=true
@@ -100,8 +100,8 @@ if [ "$needs_install" = "true" ]; then
     # favour of explicit uninstall + clean install. Idempotent (silent if
     # nothing is installed).
     if [ -n "$installed_version" ]; then
-        pipx_run uninstall yt-tools >&2 2>/dev/null || \
-            log "WARN: pipx uninstall yt-tools failed; will attempt install anyway."
+        pipx_run uninstall yt-tools-cli >&2 2>/dev/null || \
+            log "WARN: pipx uninstall yt-tools-cli failed; will attempt install anyway."
     fi
 
     # Install with [full] extras — core + [frames] + [audio] + bpm-detector

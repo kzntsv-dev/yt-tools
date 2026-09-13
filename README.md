@@ -95,7 +95,7 @@ python -m pipx ensurepath          # adds ~/.local/bin to PATH; restart shell af
 pipx install git+https://github.com/kzntsv-dev/yt-tools.git
 
 # 3. add the extras you need — one combined install re-creates the same venv
-pipx install --force "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
+pipx install --force "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]"
 ```
 
 #### What each extra buys you
@@ -120,7 +120,7 @@ refined BPM and a confidence-scored key per timestamp. Without it,
 > **Adding an extra to an existing pipx venv.** Re-run `pipx install --force`
 > with the full extras list (as in step 3) rather than installing a second
 > time — a plain reinstall of a different extras set replaces the venv. Use
-> `pipx inject yt-tools scenedetect opencv-python` only when you cannot
+> `pipx inject yt-tools-cli scenedetect opencv-python` only when you cannot
 > re-run the installer.
 
 #### What happens when an extra is missing
@@ -158,7 +158,7 @@ yt-tools doctor - environment preflight (yt-tools 0.17.0)
                          -> sudo apt install ffmpeg
   ok       extra:frames  installed - yt-frames --mode scene and yt-watch
   missing  extra:audio   not installed - yt-listen is unavailable
-                         -> pipx inject yt-tools librosa matplotlib
+                         -> pipx inject yt-tools-cli librosa matplotlib
   ok       cache         ./yt-cache - 5 videos, 75.6 MB
   ok       version       0.17.0 - yt_tools.__version__, pyproject.toml, plugin.json, SKILL.md agree
 
@@ -388,9 +388,9 @@ was checked vs. silently omitted).
 > in the core install. If `yt-ocr` exits with the missing-extra hint,
 > run:
 > ```bash
-> pipx inject yt-tools rapidocr onnxruntime
+> pipx inject yt-tools-cli rapidocr onnxruntime
 > # or for non-pipx setups:
-> pip install 'yt-tools[ocr]'
+> pip install 'yt-tools-cli[ocr]'
 > ```
 > First run with a given `--language` lazy-downloads a ~10 MB PP-OCRv5
 > ONNX model into `~/.cache/rapidocr/`.

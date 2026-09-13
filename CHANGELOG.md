@@ -11,6 +11,38 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.23.0] — 2026-09-13
+
+### Changed
+
+- **The distribution is `yt-tools-cli`.** PyPI refuses `yt-tools`: the name folds
+  into the same similarity class as the existing `yttools`, so the upload is
+  rejected at registration. The project, repository, plugin and every console
+  command stay `yt-tools`, and the import name stays `yt_tools` — only what
+  `pip`/`pipx` resolve changed.
+- Every install hint now names the distribution (`pipx inject yt-tools-cli …`,
+  `pip install 'yt-tools-cli[extra]'`), and `doctor` builds its `next_step` from
+  the same constant as the refusals instead of a second hardcoded copy that would
+  have drifted out of sync.
+
+### Added
+
+- `scripts/publish-check.py`: verifies that a release actually landed on PyPI.
+  "Never landed", "version drift" and "incomplete artifacts" are reported as
+  three different failures with three different fixes.
+- `.github/workflows/release.yml`: tag → build → PyPI by trusted publishing (OIDC,
+  no token on disk), with `publish-check` as the final job — a green build is not
+  a published release.
+
+## [0.22.1] — 2026-09-13
+
+### Fixed
+
+- `scripts/check-pypi-name.py`: documented the staleness of its own input. The
+  names come from the simple index, which is CDN-cached, so a project created
+  minutes ago can still read as "available" — the verdict is a pre-flight, not a
+  report on the last hour. Found live, on the day `yt-tools-cli` was registered.
+
 ## [0.21.0] — 2026-09-13
 
 ### Added

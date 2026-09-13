@@ -31,6 +31,13 @@ Usage::
 
 Exit codes: 0 available · 1 refused (taken, or too similar) · 2 the check could
 not run at all (bad path, no network) — an unrunnable check is never a pass.
+
+Caveat, found by using it (2026-09-13, the day `yt-tools-cli` was registered):
+the names come from the **simple index**, which is served through a CDN cache, so
+a project created minutes ago can still read as "available" here even though the
+JSON API (`/pypi/<name>/json`) already returns it. The verdict is a pre-flight —
+it tells you not to bother with an obvious name, not what happened in the last
+hour. The registration itself is the only authoritative answer.
 """
 
 from __future__ import annotations

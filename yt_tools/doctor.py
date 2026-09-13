@@ -128,7 +128,10 @@ class Report:
             return None
         if self.missing_extras:
             packages = " ".join(p for e in self.missing_extras for p in extras.EXTRA_PACKAGES[e])
-            return f"pipx inject yt-tools {packages}"
+            # Built from the same constant the refusals use: a rename that missed
+            # this copy would make the report recommend a package that does not
+            # exist ([[wiki:3589]]).
+            return f"pipx inject {extras.DISTRIBUTION} {packages}"
         for check in self.checks:
             if check.status == WARN and check.fix:
                 return check.fix
@@ -421,7 +424,9 @@ def collect(
     root = Path(__file__).resolve().parents[1]
     checks = (
         check_python(version_info),
-        check_binary("yt-dlp", fix="pipx inject yt-tools yt-dlp", which=which),
+        check_binary(
+            "yt-dlp", fix=f"pipx inject {extras.DISTRIBUTION} yt-dlp", which=which
+        ),
         check_binary(
             "ffmpeg", fix=ffmpeg_fix(platform_name or sys.platform), which=which
         ),

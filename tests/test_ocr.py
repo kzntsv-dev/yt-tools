@@ -190,8 +190,8 @@ def test_load_engine_friendly_hint_when_rapidocr_missing(monkeypatch):
     with pytest.raises(OcrError) as exc_info:
         ocr_mod._load_engine("en")
     msg = str(exc_info.value)
-    assert "pipx inject yt-tools rapidocr onnxruntime" in msg
-    assert "pip install 'yt-tools[ocr]'" in msg
+    assert "pipx inject yt-tools-cli rapidocr onnxruntime" in msg
+    assert "pip install 'yt-tools-cli[ocr]'" in msg
 
 
 # --- CLI integration ---------------------------------------------------------
@@ -289,9 +289,9 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
     def _raise(_lang):
         raise OcrError(
             "yt-ocr requires the [ocr] extra:\n"
-            "  pipx inject yt-tools rapidocr onnxruntime\n"
+            "  pipx inject yt-tools-cli rapidocr onnxruntime\n"
             "  # or\n"
-            "  pip install 'yt-tools[ocr]'"
+            "  pip install 'yt-tools-cli[ocr]'"
         )
 
     with patch.object(ocr_mod, "_load_engine", side_effect=_raise):
@@ -299,8 +299,8 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
 
     assert rc == 1
     err = capsys.readouterr().err
-    assert "pipx inject yt-tools rapidocr onnxruntime" in err
-    assert "pip install 'yt-tools[ocr]'" in err
+    assert "pipx inject yt-tools-cli rapidocr onnxruntime" in err
+    assert "pip install 'yt-tools-cli[ocr]'" in err
 
 
 def test_cli_language_ru_propagates_to_load_engine(tmp_path, monkeypatch):

@@ -166,7 +166,7 @@ def test_the_distribution_lookup_is_paid_once(monkeypatch):
     assert _resolve_version() == "9.9.9"
     assert _resolve_version(Path("absent-pyproject.toml")) == "9.9.9"
 
-    assert calls == ["yt-tools"], "the distribution lookup must not repeat in one process"
+    assert calls == ["yt-tools-cli"], "the distribution lookup must not repeat in one process"
 
 
 def test_importing_yt_tools_does_not_pay_for_importlib_metadata():

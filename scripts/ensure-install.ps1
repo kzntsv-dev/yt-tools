@@ -87,7 +87,7 @@ $installedVersion = $null
 try {
     $pipxOut = Invoke-Pipx list --short 2>$null
     if ($pipxOut) {
-        $line = $pipxOut | Where-Object { $_ -match '^yt-tools\s+' } | Select-Object -First 1
+        $line = $pipxOut | Where-Object { $_ -match '^yt-tools-cli\s+' } | Select-Object -First 1
         if ($line) {
             $installedVersion = ($line -split '\s+')[1]
         }
@@ -131,9 +131,9 @@ if ($needsInstall) {
     # favour of explicit uninstall + clean install. Idempotent (silent if
     # nothing is installed).
     if ($installedVersion) {
-        Invoke-Pipx uninstall yt-tools 2>&1 | ForEach-Object { Write-PluginLog $_ }
+        Invoke-Pipx uninstall yt-tools-cli 2>&1 | ForEach-Object { Write-PluginLog $_ }
         if ($LASTEXITCODE -ne 0) {
-            Write-PluginLog 'WARN: pipx uninstall yt-tools failed; will attempt install anyway.'
+            Write-PluginLog 'WARN: pipx uninstall yt-tools-cli failed; will attempt install anyway.'
         }
     }
 

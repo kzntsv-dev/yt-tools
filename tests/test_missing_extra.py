@@ -52,27 +52,27 @@ def _explode(*args, **kwargs):
 def test_frames_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-frames --mode scene", "frames") == (
         "yt-frames --mode scene requires the [frames] extra:\n"
-        "  pipx inject yt-tools scenedetect opencv-python\n"
+        "  pipx inject yt-tools-cli scenedetect opencv-python\n"
         "  # or\n"
-        "  pip install 'yt-tools[frames]'"
+        "  pip install 'yt-tools-cli[frames]'"
     )
 
 
 def test_audio_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-listen", "audio") == (
         "yt-listen requires the [audio] extra:\n"
-        "  pipx inject yt-tools librosa matplotlib\n"
+        "  pipx inject yt-tools-cli librosa matplotlib\n"
         "  # or\n"
-        "  pip install 'yt-tools[audio]'"
+        "  pip install 'yt-tools-cli[audio]'"
     )
 
 
 def test_ocr_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-ocr", "ocr") == (
         "yt-ocr requires the [ocr] extra:\n"
-        "  pipx inject yt-tools rapidocr onnxruntime\n"
+        "  pipx inject yt-tools-cli rapidocr onnxruntime\n"
         "  # or\n"
-        "  pip install 'yt-tools[ocr]'"
+        "  pip install 'yt-tools-cli[ocr]'"
     )
 
 
@@ -159,8 +159,8 @@ def test_degradation_note_for_audio_keeps_the_shared_wording(monkeypatch, capsys
     err = capsys.readouterr().err
     assert err.startswith("note: harmonic analysis skipped - the [audio] extra is not installed")
     assert "(continuing without it)." in err
-    assert "pipx inject yt-tools librosa matplotlib" in err
-    assert "pip install 'yt-tools[audio]'" in err
+    assert "pipx inject yt-tools-cli librosa matplotlib" in err
+    assert "pip install 'yt-tools-cli[audio]'" in err
     assert "requires the [audio] extra" not in err, "a degradation must not read as a blocker"
 
 
@@ -175,7 +175,7 @@ def test_degradation_note_is_not_the_fatal_wording(tmp_path, monkeypatch, capsys
     assert "near-duplicate dedup skipped" in err
     assert "continuing without it" in err
     assert "requires the [frames] extra" not in err, "a degradation must not read as a blocker"
-    assert "pip install 'yt-tools[frames]'" in err, "the exact command is still named"
+    assert "pip install 'yt-tools-cli[frames]'" in err, "the exact command is still named"
 
 
 # ---- AC2: yt-frames / yt-watch without [frames] ------------------------------
@@ -187,8 +187,8 @@ def test_yt_frames_scene_refuses_without_frames_extra(tmp_path, monkeypatch, cap
     err = capsys.readouterr().err
     assert rc != 0, "a missing extra must be a non-zero exit"
     assert "requires the [frames] extra" in err
-    assert "pipx inject yt-tools scenedetect opencv-python" in err
-    assert "pip install 'yt-tools[frames]'" in err
+    assert "pipx inject yt-tools-cli scenedetect opencv-python" in err
+    assert "pip install 'yt-tools-cli[frames]'" in err
     assert "Traceback" not in err
 
 
@@ -206,7 +206,7 @@ def test_yt_watch_refuses_without_frames_extra(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc != 0
     assert "yt-watch requires the [frames] extra" in err
-    assert "pip install 'yt-tools[frames]'" in err
+    assert "pip install 'yt-tools-cli[frames]'" in err
 
 
 def test_yt_watch_refuses_before_fetching_metadata(tmp_path, monkeypatch):
@@ -229,8 +229,8 @@ def test_yt_listen_refuses_without_audio_extra(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc != 0
     assert "requires the [audio] extra" in err
-    assert "pipx inject yt-tools librosa matplotlib" in err
-    assert "pip install 'yt-tools[audio]'" in err
+    assert "pipx inject yt-tools-cli librosa matplotlib" in err
+    assert "pip install 'yt-tools-cli[audio]'" in err
     assert "Traceback" not in err
 
 

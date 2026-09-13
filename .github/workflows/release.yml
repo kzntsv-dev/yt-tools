@@ -1,0 +1,68 @@
+name: release
+
+# A release is a tag: `git tag v0.23.0 && git push origin v0.23.0`. The version in
+# pyproject.toml must match the tag — publish-check (last job) fails the run when
+# it does not, because a green build is not a published release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (must match pyproject.toml)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI (trusted publishing)
+    needs: build
+    runs-on: ubuntu-latest
+    # No API token anywhere: PyPI trusts this workflow through OIDC. The
+    # environment name must match the trusted publisher configured for the
+    # project on PyPI (`pypi`).
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC token the index exchanges for an upload grant
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  verify:
+    name: verify the release landed
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The point of the job: "uploaded" and "installable" are different claims.
+      - name: publish-check (is the version people install the version we tagged?)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ -n "$version" ] || version="${{ inputs.version }}"
+          python scripts/publish-check.py --version "$version"

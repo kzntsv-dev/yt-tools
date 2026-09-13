@@ -20,6 +20,12 @@ from __future__ import annotations
 import sys
 from importlib import import_module
 
+#: The **distribution** name — what `pip`/`pipx` resolve and what PyPI accepts.
+#: Not the project name: `yt-tools` is unregisterable on PyPI (its similarity
+#: folding collides with the existing `yttools`, [[wiki:3589]]), while the
+#: project, repo, plugin and every console command stay `yt-tools`.
+DISTRIBUTION = "yt-tools-cli"
+
 # extra → modules the flow imports at run time. Import names, which are not
 # distribution names: ``cv2`` comes from ``opencv-python``.
 EXTRA_MODULES: dict[str, tuple[str, ...]] = {
@@ -64,7 +70,7 @@ def _install_lines(extra: str) -> str:
     return (
         f"  {inject_command(extra)}\n"
         f"  # or\n"
-        f"  pip install 'yt-tools[{extra}]'"
+        f"  pip install '{DISTRIBUTION}[{extra}]'"
     )
 
 
@@ -76,7 +82,7 @@ def inject_command(extra: str) -> str:
     """
     _check_extra(extra)
     packages = " ".join(EXTRA_PACKAGES[extra])
-    return f"pipx inject yt-tools {packages}"
+    return f"pipx inject {DISTRIBUTION} {packages}"
 
 
 def module_missing(name: str) -> bool:
