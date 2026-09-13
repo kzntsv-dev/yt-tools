@@ -86,19 +86,43 @@ directory at this repo's `skills/` (or symlink `skills/using-yt-tools` into it).
 
 ### Standalone CLI (any environment)
 
-Install directly from this Git repo via [`pipx`](https://pipx.pypa.io/):
+The distribution is **`yt-tools-cli`**: the project, the repository, the plugin and
+every console command stay `yt-tools`, and the import name stays `yt_tools`.
+`pip`/`pipx`/`uv` resolve the distribution name, so that is the one below.
 
 ```bash
 # 1. bootstrap pipx (one-time per user)
 python -m pip install --user pipx
 python -m pipx ensurepath          # adds ~/.local/bin to PATH; restart shell after
 
-# 2. install yt-tools (core) from this repo
-pipx install git+https://github.com/kzntsv-dev/yt-tools.git
+# 2. install from PyPI — core + [frames] + [audio], i.e. every flow except OCR
+pipx install "yt-tools-cli[full]"
 
-# 3. add the extras you need — one combined install re-creates the same venv
-pipx install --force "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]"
+# reproducible: pin the exact version
+pipx install "yt-tools-cli[full]==0.23.1"
+
+# [ocr] is always separate and explicit (its ONNX model is ~10 MB, fetched lazily)
+pipx inject yt-tools-cli rapidocr onnxruntime
 ```
+
+`uv` users: `uv tool install "yt-tools-cli[full]"`, or for a one-off run
+`uvx --from "yt-tools-cli[full]" yt-transcript <url>`.
+
+**From a checkout instead of PyPI** — the plugin path, or anyone tracking
+`master`:
+
+```bash
+pipx install 'git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]'
+```
+
+> **Changing the extras of an existing install.** `pipx uninstall yt-tools-cli`
+> first, then install the new extras set. `pipx install --force` on an existing
+> venv can leave the new extras half-installed and resolve against the old pin
+> set — observed on a `[full]` reinstall that kept `librosa` 1.0 instead of the
+> capped 0.11 and skipped `scenedetect` entirely. Verify with
+> `pipx runpip yt-tools-cli list`, not by the version alone.
+> `pipx inject yt-tools-cli <packages>` is the narrow alternative when you only
+> need to add packages.
 
 #### What each extra buys you
 
@@ -134,11 +158,11 @@ pipx inject yt-tools-cli "bpm-detector @ git+https://github.com/libraz/bpm-detec
 Without it `yt-listen` still runs: librosa-only BPM and key, with every section
 it cannot fill marked `n/a` in the markdown rather than silently missing.
 
-> **Adding an extra to an existing pipx venv.** Re-run `pipx install --force`
-> with the full extras list (as in step 3) rather than installing a second
-> time — a plain reinstall of a different extras set replaces the venv. Use
-> `pipx inject yt-tools-cli scenedetect opencv-python` only when you cannot
-> re-run the installer.
+> **Adding a single extra to an existing pipx venv.** `pipx inject yt-tools-cli
+> scenedetect opencv-python` adds packages without rebuilding the venv, which is
+> the cheapest way to widen an install. To change the *extras set* (e.g. move
+> from core to `[full]`), uninstall and reinstall instead — see the note in
+> [Standalone CLI](#standalone-cli-any-environment).
 
 #### What happens when an extra is missing
 

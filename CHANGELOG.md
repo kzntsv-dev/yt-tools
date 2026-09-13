@@ -11,6 +11,33 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.23.2] — 2026-09-13
+
+### Fixed
+
+- `scripts/publish-check.py` no longer reports a false `version drift` seconds
+  after a successful upload. PyPI's *project-level* JSON API is CDN-cached
+  (`cache-control: max-age=900`), so the `verify` job — which runs about five
+  seconds after the publish step — read the previous version and failed the
+  `0.23.1` release run while the release itself was live and complete. The check
+  now asks the *version-scoped* endpoint (`/pypi/<name>/<version>/json`, a URL
+  that cannot be stale) first, and lets the project endpoint only explain. Same
+  failure class as the simple-index cache behind the 0.22.1 preflight note: the
+  source a check adjudicates on has to be one that cannot lag.
+
+### Changed
+
+- The README and the skill lead with the PyPI install instead of the git URL:
+  `pipx install "yt-tools-cli[full]"`, a pinned form
+  (`pipx install "yt-tools-cli[full]==0.23.1"`), and an explicit note that the
+  distribution is `yt-tools-cli` while the project, the repository and every
+  command stay `yt-tools` (import name `yt_tools`).
+- The *changing extras* advice is corrected: `pipx uninstall` and then install,
+  instead of `pipx install --force`. A forced reinstall on an existing venv was
+  observed leaving the new extras half-installed (`scenedetect` skipped entirely)
+  and resolving `librosa` 1.0 past its cap; `pipx runpip yt-tools-cli list` is
+  the check that sees it.
+
 ## [0.23.1] — 2026-09-13
 
 > `0.23.0` never reached PyPI: the upload was rejected and no artifact exists

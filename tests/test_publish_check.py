@@ -38,8 +38,8 @@ def _payload(version: str, *, wheel: bool = True, sdist: bool = True) -> str:
     return json.dumps({"info": {"name": "yt-tools-cli", "version": version}, "urls": files})
 
 
-def _write(tmp_path: Path, text: str) -> Path:
-    path = tmp_path / "pypi.json"
+def _write(tmp_path: Path, text: str, name: str = "pypi.json") -> Path:
+    path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     return path
 
@@ -61,12 +61,57 @@ def test_a_landed_release_passes(tmp_path):
 
 
 def test_a_version_that_never_landed_fails_and_names_both_versions(tmp_path):
-    """The failure sched saw twice: build green, registry still on the old one."""
-    proc = _run("--version", "9.9.9", "--json-file", str(_write(tmp_path, _payload("0.22.1"))))
+    """The failure sched saw twice: build green, registry still on the old one.
+
+    Restated for the two-endpoint design: *our* version endpoint 404s (the
+    release is not there) while the project endpoint names another version —
+    which is the actual drift signature.
+    [test-modify: test_a_version_that_never_landed_fails_and_names_both_versions:
+     was `--json-file` carrying the project payload with another version; is the
+     same payload passed as `--project-json-file` next to a 404 version payload;
+     reason: the check now asks the version-scoped endpoint first (it cannot be
+     CDN-stale — task:2826), so "what the index serves" is the project payload
+     and "is our release there" is the version payload]
+    """
+    proc = _run(
+        "--version",
+        "9.9.9",
+        "--json-file",
+        str(_write(tmp_path, '{"message": "Not Found"}', name="version.json")),
+        "--project-json-file",
+        str(_write(tmp_path, _payload("0.22.1"), name="project.json")),
+    )
 
     assert proc.returncode == 1
     assert "9.9.9" in proc.stdout  # what we tagged
     assert "0.22.1" in proc.stdout  # what the world installs
+    assert "drift" in proc.stdout
+
+
+def test_a_stale_project_endpoint_does_not_fail_a_landed_release(tmp_path):
+    """The v0.23.1 incident, pinned as a test ([[task:2826]]).
+
+    PyPI's project-level JSON API is CDN-cached (`cache-control: max-age=900`,
+    `X-Cache: HIT`), so five seconds after a successful upload it still serves
+    the *previous* version — and the `verify` job runs exactly then. Adjudicating
+    on that payload produced a false `version drift` on a release that had
+    landed: the uploaded files were on the index the whole time. The
+    version-scoped endpoint is a URL nobody has fetched before, so it cannot be
+    stale; the project endpoint is only allowed to explain, never to decide.
+    """
+    expected = _pyproject_version()
+    proc = _run(
+        "--json-file",
+        str(_write(tmp_path, _payload(expected), name="version.json")),
+        "--project-json-file",
+        str(_write(tmp_path, _payload("0.0.0"), name="project.json")),
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "landed" in proc.stdout
+    # Named as a cache note, not as a verdict.
+    assert "0.0.0" in proc.stdout
+    assert "cache" in proc.stdout.lower()
 
 
 def test_a_missing_artifact_kind_fails(tmp_path):
@@ -89,6 +134,21 @@ def test_a_project_that_does_not_exist_yet_is_not_a_mismatch(tmp_path):
 
     assert proc.returncode == 1
     assert "does not exist" in proc.stdout or "never landed" in proc.stdout
+
+
+def test_a_project_endpoint_that_is_also_missing_still_says_never_landed(tmp_path):
+    """Both endpoints 404: the release never landed (no drift to report)."""
+    proc = _run(
+        "--version",
+        "9.9.9",
+        "--json-file",
+        str(_write(tmp_path, '{"message": "Not Found"}', name="version.json")),
+        "--project-json-file",
+        str(_write(tmp_path, '{"message": "Not Found"}', name="project.json")),
+    )
+
+    assert proc.returncode == 1
+    assert "never landed" in proc.stdout
 
 
 def test_the_default_expected_version_is_the_tree_s(tmp_path):

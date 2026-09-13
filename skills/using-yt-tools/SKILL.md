@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.23.1
+version: 0.23.2
 description: Seven flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. **OCR** (`yt-ocr`, silent-with-text fallback) — RapidOCR PP-OCRv5 over cached frames → `[mm:ss]` blocks as a transcript substitute when `yt-transcript` is empty or the video is silent-instructional (burned-in captions, schematic labels, chord matrices). Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", "read text from frames", "OCR this video", "what does the caption say", "extract overlay text", "captions burned in", "прочти текст с кадров", "OCR этого видео", "silent video с текстом", or any youtube.com URL. CLI installed once per machine with pipx (`pipx install 'yt-tools-cli[full]'` adds the audio/chord stack); `yt-tools doctor` is the read-only preflight that names whatever is missing. YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
@@ -133,25 +133,47 @@ binaries).
 
 ### Installing the CLI
 
-Install once per machine — one command, the same in every harness:
+Install once per machine — one command, the same in every harness. The
+**distribution** name is `yt-tools-cli` (the project, repo, plugin and all
+commands stay `yt-tools`; the import name is `yt_tools`):
 
 ```bash
-pipx install git+https://github.com/kzntsv-dev/yt-tools.git
+# from PyPI — core + [frames] + [audio], i.e. every flow except OCR
+pipx install "yt-tools-cli[full]"
+
+# core only (transcript / meta / comments / search / cache)
+pipx install yt-tools-cli
+
+# reproducible: pin the exact version
+pipx install "yt-tools-cli[full]==0.23.1"
 ```
 
-For chord progression + structural analysis in `yt-listen`, add the `[full]`
-extra:
+From a checkout instead of PyPI (the plugin path, or tracking `master`):
 
 ```bash
-pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]"
+pipx install 'git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]'
 ```
+
+The `[full]` extra is core + `[frames]` + `[audio]`. Chord progression,
+structural segments and the refined BPM/key in `yt-listen` come from
+`bpm-detector`, which is **not on PyPI** and therefore cannot live in the
+published metadata — the Python package index rejects direct VCS references.
+Add it on top:
+
+```bash
+pipx inject yt-tools-cli "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+```
+
+Without it `yt-listen` still runs (librosa-only BPM/key, unfilled sections marked
+`n/a`). `[ocr]` is always an explicit extra: `pipx inject yt-tools-cli rapidocr
+onnxruntime`.
 
 Some harnesses do this for you: if your host ships the bundled yt-tools plugin
 (Claude Code does), its `SessionStart` hook pipx-installs the `[full]` set from
-the plugin's own clone on the first session after install — no PyPI
-involvement, and a blocked `[full]` VCS fetch falls back to `[frames,audio]`,
-where every flow except OCR still works. A hook is a convenience, not a
-requirement: the two commands above are the contract.
+the plugin's own clone on the first session after install, then injects
+`bpm-detector` best-effort — a blocked VCS fetch warns and leaves the
+librosa-only path, it never fails the install. A hook is a convenience, not a
+requirement: the commands above are the contract.
 
 ### First run on a machine: `yt-tools doctor`
 
@@ -211,9 +233,10 @@ the optional `[ocr]` extra):
    ```
    python -m pip install --user pipx
    python -m pipx ensurepath                                       # one-time; restart shell after
-   pipx install git+https://github.com/kzntsv-dev/yt-tools.git    # core
-   # For chord progression / structure analysis (optional):
-   # pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]"
+   pipx install "yt-tools-cli[full]"                               # core + frames + audio
+   pipx inject yt-tools-cli "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+   # or from a checkout:
+   pipx install 'git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools-cli[full]'
    ```
    If your host ships the bundled plugin (Claude Code users: install
    `yt-tools@opeitcloc03-claude-plugins`), prefer it — its SessionStart hook
