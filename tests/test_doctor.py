@@ -24,7 +24,13 @@ from yt_tools import cache as cache_mod
 from yt_tools import cli as umbrella_cli
 from yt_tools import doctor, extras
 
-FULL_ENV = ("scenedetect", "cv2", "librosa", "matplotlib", "rapidocr", "onnxruntime")
+FULL_ENV = ("scenedetect", "cv2", "librosa", "matplotlib", "rapidocr", "onnxruntime", "bpm_detector")
+
+#: Everything a bare core install has *not* got — the extras plus the one
+#: enrichment that cannot be an extra (not on PyPI, and PyPI rejects direct
+#: references in metadata: release 0.23.0 died on that).
+ENRICHMENT_MODULE = "bpm_detector"
+NO_ENRICHMENT_ENV = tuple(m for m in FULL_ENV if m != ENRICHMENT_MODULE)
 BOTH_BINS = ("yt-dlp", "ffmpeg")
 
 
@@ -695,6 +701,50 @@ def test_ok_report_has_no_next_step(monkeypatch, tmp_path, capsys):
     assert rc == 0
 
 
+# ---- the enrichment that cannot be a package extra --------------------------
+#
+# `bpm-detector` is the difference between librosa-only BPM/key and full chord
+# progression + structure in `yt-listen`, but it is not on PyPI and PyPI rejects
+# PEP 508 direct references in `Requires-Dist` — so it cannot ride `[full]`
+# (release 0.23.0 died on exactly that, [[task:2824]]) and is installed with
+# `pipx inject` instead. Nothing in the install spec guarantees it, so doctor has
+# to name it: without this line a PyPI install has no way to learn the enrichment
+# exists at all. Absent is a `warn` — a feature is lost, nothing is blocked (D6).
+
+
+def test_missing_bpm_detector_is_a_warn_with_the_inject_command(monkeypatch, tmp_path):
+    _only_importable(monkeypatch, *NO_ENRICHMENT_ENV)
+    report = doctor.collect(tmp_path, which=_which(BOTH_BINS), version_info=(3, 12, 1))
+
+    check = _by_name(report)["enrichment:bpm-detector"]
+    assert check.status == "warn"
+    assert check.required is False
+    assert check.fix == extras.BPM_DETECTOR_FIX
+    assert "git+https://github.com/libraz/bpm-detector" in check.fix
+    assert report.can_proceed is True
+
+
+def test_a_present_bpm_detector_is_reported_ok(monkeypatch, tmp_path):
+    _only_importable(monkeypatch, *FULL_ENV)
+    report = doctor.collect(tmp_path, which=_which(BOTH_BINS), version_info=(3, 12, 1))
+    assert _by_name(report)["enrichment:bpm-detector"].status == "ok"
+
+
+def test_the_enrichment_alone_becomes_the_next_step(monkeypatch, tmp_path):
+    """Nothing else wrong: the one command worth running is the enrichment."""
+    _only_importable(monkeypatch, *NO_ENRICHMENT_ENV)
+    report = doctor.collect(tmp_path, which=_which(BOTH_BINS), version_info=(3, 12, 1))
+    assert report.next_step == extras.BPM_DETECTOR_FIX
+
+
+def test_a_missing_extra_outranks_the_enrichment(monkeypatch, tmp_path):
+    """Priority stays: extras first (they unlock whole flows), then the warn."""
+    _only_importable(monkeypatch)
+    report = doctor.collect(tmp_path, which=_which(BOTH_BINS), version_info=(3, 12, 1))
+    assert report.next_step.startswith("pipx inject yt-tools-cli ")
+    assert "git+https" not in report.next_step
+
+
 # ---- human output is the default --------------------------------------------
 
 
@@ -707,7 +757,7 @@ def test_human_output_names_every_check_and_the_next_step(monkeypatch, tmp_path,
     out = capsys.readouterr().out
     assert "missing" in out and "can_proceed: no" in out
     assert "next_step: sudo apt install ffmpeg" in out
-    for name in ("python", "yt-dlp", "ffmpeg", "extra:frames", "extra:audio", "extra:ocr", "cache", "version"):
+    for name in ("python", "yt-dlp", "ffmpeg", "extra:frames", "extra:audio", "extra:ocr", "enrichment:bpm-detector", "cache", "version"):
         assert name in out
     assert rc == 1
 

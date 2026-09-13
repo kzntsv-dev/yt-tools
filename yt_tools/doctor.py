@@ -213,6 +213,30 @@ def ffmpeg_fix(platform_name: str) -> str:
     return FFMPEG_FIX.get(platform_name, FFMPEG_FIX_FALLBACK)
 
 
+def check_bpm_detector() -> Check:
+    """The one enrichment that cannot be an extra — named anyway.
+
+    It does not go through ``check_extra`` because there is no ``[extra]`` to
+    install: the package is not on PyPI, so its absence is only fixable by
+    ``pipx inject``. For the caller it is the same kind of absence as a missing
+    extra — a feature is lost, nothing is blocked — so it is reported the same
+    way, with the exact command (D6). Without this line a PyPI install has no
+    way to learn the enrichment exists at all.
+    """
+    if extras.module_missing(extras.BPM_DETECTOR_MODULE):
+        return Check(
+            "enrichment:bpm-detector",
+            WARN,
+            "not installed - yt-listen falls back to librosa-only BPM/key",
+            fix=extras.BPM_DETECTOR_FIX,
+        )
+    return Check(
+        "enrichment:bpm-detector",
+        OK,
+        "installed - chord progression + structure in yt-listen",
+    )
+
+
 def check_extra(extra: str) -> Check:
     """Is the heavy stack for one flow importable here (D4's probe, not a spec)?"""
     if extras.extra_available(extra):
@@ -431,6 +455,7 @@ def collect(
             "ffmpeg", fix=ffmpeg_fix(platform_name or sys.platform), which=which
         ),
         *(check_extra(extra) for extra in extras.EXTRA_MODULES),
+        check_bpm_detector(),
         check_cache(cache_root(base)),
         check_version(
             package_version=__version__,

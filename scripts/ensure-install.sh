@@ -23,6 +23,25 @@ log() { printf '[yt-tools] %s\n' "$*" >&2; }
 # exactly that). It is injected on top of the install instead, best-effort.
 BPM_DETECTOR_SPEC="bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
 
+inject_bpm_detector() {
+    if ! pipx_run inject yt-tools-cli "${BPM_DETECTOR_SPEC}" >&2; then
+        log "WARN: bpm-detector inject failed (VCS fetch blocked?); yt-listen runs the librosa-only path."
+    fi
+}
+
+# Is the enrichment missing from an otherwise healthy install? Ask the CLI —
+# `doctor` owns the check name and the fix command, so the hook cannot drift
+# into disagreeing with what the agent is told. No CLI on PATH (or an older
+# install): stay quiet and do nothing.
+needs_bpm_detector() {
+    yt_bin="$(command -v yt-tools 2>/dev/null || true)"
+    if [ -z "$yt_bin" ] && [ -x "$HOME/.local/bin/yt-tools" ]; then
+        yt_bin="$HOME/.local/bin/yt-tools"
+    fi
+    [ -n "$yt_bin" ] || return 1
+    "$yt_bin" doctor 2>/dev/null | grep -Eq '^[[:space:]]*warn[[:space:]]+enrichment:bpm-detector'
+}
+
 # 0. Resolve plugin root ───────────────────────────────────────────────────
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 if [ -z "$PLUGIN_ROOT" ]; then
@@ -135,10 +154,18 @@ if [ "$needs_install" = "true" ]; then
     # enrichment is chord/structure/BPM refinement, not a flow of its own, and
     # yt-listen already renders the librosa-only path with explicit n/a markers.
     if [ "$install_ok" = "true" ]; then
-        if ! pipx_run inject yt-tools-cli "${BPM_DETECTOR_SPEC}" >&2; then
-            log "WARN: bpm-detector inject failed (VCS fetch blocked?); yt-listen runs the librosa-only path."
-        fi
+        inject_bpm_detector
     fi
+fi
+
+# 2b. bpm-detector on an already-correct install ──────────────────────────
+# The enrichment lives outside the install spec, so a version match — the common
+# case on every later session start — never enters the block above, and a machine
+# that once lost the VCS fetch would stay on the librosa-only path forever,
+# silently. Probe and top up instead.
+if [ "$needs_install" = "false" ] && needs_bpm_detector; then
+    log "bpm-detector is missing from an up-to-date install; injecting it."
+    inject_bpm_detector
 fi
 
 # 3. Probe ffmpeg ──────────────────────────────────────────────────────────

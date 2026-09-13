@@ -41,6 +41,17 @@ EXTRA_PACKAGES: dict[str, tuple[str, ...]] = {
     "ocr": ("rapidocr", "onnxruntime"),
 }
 
+#: The enrichment that cannot be a package extra. ``bpm-detector`` gives
+#: ``yt-listen`` chord progression, structural segments and a refined BPM/key,
+#: but it is not on PyPI — so it can only be a PEP 508 direct reference, and PyPI
+#: rejects those in ``Requires-Dist`` (release 0.23.0 died on exactly that,
+#: [[task:2824]]). It is therefore installed with ``pipx inject``: by the plugin
+#: hook, or by hand from the README. ``doctor`` names it for the same reason it
+#: names a missing extra — a silent quality drop is worse than a named one (D6).
+BPM_DETECTOR_MODULE = "bpm_detector"
+BPM_DETECTOR_SPEC = "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+BPM_DETECTOR_FIX = f'pipx inject {DISTRIBUTION} "{BPM_DETECTOR_SPEC}"'
+
 _MISSING = object()
 
 

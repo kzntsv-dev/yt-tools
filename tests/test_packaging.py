@@ -17,6 +17,7 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -92,6 +93,22 @@ HOOK_BPM_INJECT: dict[str, tuple[str, ...]] = {
     "ensure-install.ps1": (
         r'Invoke-Pipx\s+inject\s+yt-tools-cli\s+\$BpmDetectorSpec',
         r'WARN:.*bpm-detector inject failed',
+    ),
+}
+
+# The self-heal half: the enrichment lives *outside* the install spec, so a
+# version match — the common case on every later session start — skips the
+# install branch entirely and nothing would ever put it back. The hook asks the
+# CLI itself (`doctor`), whose report carries the same check name and the same
+# fix command, so the two cannot drift into disagreeing about what is installed.
+HOOK_BPM_SELFHEAL: dict[str, tuple[str, ...]] = {
+    "ensure-install.sh": (
+        r'command\s+-v\s+yt-tools',
+        r'enrichment:bpm-detector',
+    ),
+    "ensure-install.ps1": (
+        r'Get-Command\s+yt-tools',
+        r'enrichment:bpm-detector',
     ),
 }
 
@@ -484,12 +501,67 @@ def test_hook_injects_bpm_detector_best_effort(script_name):
 
 
 @pytest.mark.parametrize("script_name", HOOK_SCRIPTS)
+def test_hook_tops_up_bpm_detector_when_the_version_already_matches(script_name):
+    """The gap the inject alone leaves open.
+
+    `bpm-detector` cannot be part of `[full]` (it is not on PyPI and PyPI rejects
+    direct references in metadata), so nothing in the install spec guarantees it.
+    The inject above only runs after a reinstall — which happens once, on a
+    version change. Every later session start takes the "version matches" path
+    and would leave a machine that once lost the VCS fetch (corporate proxy) on
+    the librosa-only path forever, quietly. So the hook asks the CLI.
+    """
+    code = _code_lines((ROOT / "scripts" / script_name).read_text(encoding="utf-8"))
+    for pattern in HOOK_BPM_SELFHEAL[script_name]:
+        assert re.search(pattern, code), (
+            f"{script_name}: no self-heal probe for the enrichment (no match for {pattern!r}); "
+            "a version match skips the install branch and the inject with it"
+        )
+
+
+@pytest.mark.parametrize("script_name", HOOK_SCRIPTS)
 def test_hook_pins_bpm_detector_to_the_url_requirement_46_records(script_name):
     """The spec lives in the hook now, so the URL is asserted there — verbatim."""
     code = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
     assert BPM_DETECTOR_URL in code, (
         f"{script_name}: expected the bpm-detector VCS spec to carry {BPM_DETECTOR_URL!r}"
     )
+
+
+def test_hook_shell_script_parses():
+    """Content guards do not see syntax.
+
+    A stray `fi` (from a restructure that moved a block out of an `if`) passed
+    every regex above and every unit test — the packaging suite asserts strings,
+    not grammar. It surfaced only when the hook was run by hand. `bash -n` is the
+    cheap check that sees it, and it costs milliseconds on every push.
+    """
+    bash = shutil.which("bash")
+    if bash is None:  # pragma: no cover - Windows without Git Bash
+        pytest.skip("no bash on PATH")
+    proc = subprocess.run(
+        [bash, "-n", str(ROOT / "scripts" / "ensure-install.sh")],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"ensure-install.sh does not parse:\n{proc.stderr}"
+
+
+def test_hook_powershell_script_parses():
+    """Same guard for the Windows hook (skipped where no PowerShell exists)."""
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell is None:  # pragma: no cover - Linux/macOS CI
+        pytest.skip("no PowerShell on PATH")
+    script = str(ROOT / "scripts" / "ensure-install.ps1")
+    parse = (
+        f"$errors = $null; "
+        f"[void][System.Management.Automation.Language.Parser]::ParseFile('{script}', [ref]$null, [ref]$errors); "
+        f"if ($errors.Count) {{ $errors | ForEach-Object {{ Write-Error $_.Message }}; exit 1 }}"
+    )
+    proc = subprocess.run(
+        [shell, "-NoProfile", "-Command", parse], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, f"ensure-install.ps1 does not parse:\n{proc.stderr}"
 
 
 # ---- documentation ----------------------------------------------------------

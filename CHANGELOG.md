@@ -11,6 +11,31 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.24.0] — 2026-09-13
+
+### Added
+
+- `yt-tools doctor` now names the `bpm-detector` enrichment: a `warn` (never a
+  blocker) with the exact `pipx inject` command. It is not an extra and cannot be
+  one, so nothing else in the report was ever going to mention it — a PyPI
+  install had no way to learn the enrichment existed at all.
+- The plugin hook tops the enrichment up on the "version already matches" path.
+  Both hooks ask the CLI (`doctor`) and inject only what it reports missing, so
+  the hook and the report cannot drift into disagreeing about the environment.
+- A syntax guard for the hook scripts: `bash -n` for the POSIX hook, the
+  PowerShell parser for the Windows one. The content guards assert strings, not
+  grammar — a stray `fi` left behind by a block restructure passed all of them
+  and was caught only by running the hook by hand.
+
+### Fixed
+
+- Moving `bpm-detector` out of `[full]` (0.23.1) left it guaranteed by nothing:
+  the hook injected it only right after a reinstall, so a machine whose VCS fetch
+  had once been blocked by a proxy — or one installed before 0.23.1 — stayed on
+  the librosa-only path for good, and silently. Now every session start checks
+  and repairs it, best-effort: a blocked fetch warns and leaves the install
+  working.
+
 ## [0.23.2] — 2026-09-13
 
 ### Fixed

@@ -24,6 +24,28 @@ function Write-PluginLog {
 # exactly that). It is injected on top of the install instead, best-effort.
 $BpmDetectorSpec = 'bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0'
 
+function Inject-BpmDetector {
+    Invoke-Pipx inject yt-tools-cli $BpmDetectorSpec 2>&1 | ForEach-Object { Write-PluginLog $_ }
+    if ($LASTEXITCODE -ne 0) {
+        Write-PluginLog 'WARN: bpm-detector inject failed (VCS fetch blocked?); yt-listen runs the librosa-only path.'
+    }
+}
+
+# Is the enrichment missing from an otherwise healthy install? Ask the CLI -
+# `doctor` owns the check name and the fix command, so the hook cannot drift
+# into disagreeing with what the agent is told. No CLI found (or an older
+# install): stay quiet and do nothing.
+function Test-BpmDetectorMissing {
+    $ytBin = (Get-Command yt-tools -ErrorAction SilentlyContinue).Source
+    if (-not $ytBin) {
+        $candidate = Join-Path $HOME '.local/bin/yt-tools'
+        if (Test-Path $candidate) { $ytBin = $candidate }
+    }
+    if (-not $ytBin) { return $false }
+    $report = & $ytBin doctor 2>$null
+    return [bool]($report | Select-String -Pattern '^\s*warn\s+enrichment:bpm-detector')
+}
+
 # 0. Resolve plugin root ───────────────────────────────────────────────────
 $PluginRoot = $env:CLAUDE_PLUGIN_ROOT
 if (-not $PluginRoot) {
@@ -171,11 +193,18 @@ if ($needsInstall) {
     # enrichment is chord/structure/BPM refinement, not a flow of its own, and
     # yt-listen already renders the librosa-only path with explicit n/a markers.
     if ($installOk) {
-        Invoke-Pipx inject yt-tools-cli $BpmDetectorSpec 2>&1 | ForEach-Object { Write-PluginLog $_ }
-        if ($LASTEXITCODE -ne 0) {
-            Write-PluginLog 'WARN: bpm-detector inject failed (VCS fetch blocked?); yt-listen runs the librosa-only path.'
-        }
+        Inject-BpmDetector
     }
+}
+
+# 2b. bpm-detector on an already-correct install -----------------------------
+# The enrichment lives outside the install spec, so a version match - the common
+# case on every later session start - never enters the block above, and a machine
+# that once lost the VCS fetch would stay on the librosa-only path forever,
+# silently. Probe and top up instead.
+if (-not $needsInstall -and (Test-BpmDetectorMissing)) {
+    Write-PluginLog 'bpm-detector is missing from an up-to-date install; injecting it.'
+    Inject-BpmDetector
 }
 
 # 3. Probe ffmpeg ──────────────────────────────────────────────────────────
