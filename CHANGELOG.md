@@ -11,6 +11,62 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.25.2] — 2026-09-13
+
+### Added
+
+- **CI runs the suite on a core-only install, and a gate fails the leg when an
+  extras-dependent test stops skipping** ([[task:2842]], closing the class of
+  [[issue:75]]). Until now `pytest` only ever ran against `[full,ocr]`, so a test
+  that imported an extra in its body reddened light installs while CI stayed
+  green — exactly how `tests/test_listen.py` shipped the 0.25.1 bug. The job is
+  now a two-leg matrix: `core only` (`pip install -e ".[test]"`) and
+  `full extras` (`[full,ocr,test]`), both running
+  `pytest -q -rs --extras-gate-floors`.
+
+  The gate lives in the suite (`tests/conftest.py` + `tests/extras_gate.py`), not
+  in a separate script, so it holds wherever pytest runs. A test declares its
+  extra once, by requesting the `frames_stack` / `audio_stack` / `ocr_stack`
+  fixture; the fixture skips with the extra's name and the exact install command,
+  and the same request applies a `requires_<extra>` marker the gate counts. On a
+  leg without the extra the gated tests must skip *with a reason*; on a leg with
+  it they must run — a gated test that skips although its extra is installed, or
+  runs although it is absent, is a gate violation and fails the session, as does
+  a gated set that shrank below the floor in `GATED_MINIMUM` (the numbers are the
+  counts as they stand, so *any* drop is red — a gate that loses its tests would
+  otherwise pass on nothing, and a stripped fixture takes its marker with it).
+
+  Gating 61 tests that were only ever green under `[full,ocr]` (36 in
+  `test_frames.py`, 13 in `test_watch.py`, 4 in `test_transcript.py`, 8 in
+  `test_listen.py`) made a core-only run real: **61 failed → 0 failed**, 425
+  passed / 77 skipped, every skip naming its extra. The `full,ocr` leg stays
+  green: 497 passed, 5 skips (Windows-only, `test_doctor`).
+
+  Test- and CI-only change: no file under `yt_tools/` moved, so no PyPI artifact
+  is cut for it — the published 0.25.0 stays what `pipx` installs, and this
+  version lives in the repo and the public mirror only (same shape as 0.25.1).
+
+- **Three CI legs, and each one states what it installs** ([[task:2844]]). The new
+  `pytest (frames only)` leg installs `.[frames,test]` and asks the question the
+  `full extras` leg cannot: there `cv2` also arrives through rapidocr, so a
+  `[frames]` extra that stopped delivering opencv would keep that leg green while
+  `pipx install 'yt-tools-cli[frames]'` handed the user a `yt-frames` without
+  cv2. That check found `[frames]` healthy today — `scenedetect` 0.7.1 lists
+  `opencv-python` as a hard dependency (its older `[opencv]` extra, still named in
+  our requirement string, no longer exists, hence a harmless pip warning) — and
+  the leg is what keeps it that way.
+
+  The gate gained the other half of the claim, `--extras-gate-expect`: a leg
+  whose extra silently failed to install is otherwise indistinguishable from a leg
+  that never had the extra, because every gated test skips "legitimately" and the
+  job is green on nothing — the [[issue:77]] shape. Each leg now declares what it
+  installs (`frames` / `frames,audio,ocr`); the gate fails the session when a
+  declared extra is not importable.
+
+  Locally, all three legs against this tree: `core only` 432 passed / 77 skipped,
+  `frames only` 485 / 24, `full extras` 504 / 5 (Windows-only `test_doctor`
+  skips) — 0 failed on every leg, gate green on every leg.
+
 ## [0.25.1] — 2026-09-13
 
 ### Fixed

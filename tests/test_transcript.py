@@ -138,7 +138,7 @@ def test_an_empty_transcript_is_the_same_refusal(tmp_path: Path, capsys):
     assert "yt-listen" in err and "yt-ocr" in err
 
 
-def test_watch_degrades_on_an_empty_transcript(tmp_path: Path, capsys):
+def test_watch_degrades_on_an_empty_transcript(tmp_path: Path, capsys, frames_stack):
     # Тот же пустой ответ, но со стороны yt-watch: кадры важнее, чем отсутствие текста.
     def _extract(source, seconds, out_path, *args, **kwargs):
         _write_frame(out_path, 5 * int(seconds) + 10)
@@ -183,7 +183,7 @@ def _write_frame(path: Path, intensity: int) -> Path:
     return path
 
 
-def test_watch_degrades_to_frames_only_when_transcript_is_unavailable(tmp_path: Path, capsys):
+def test_watch_degrades_to_frames_only_when_transcript_is_unavailable(tmp_path: Path, capsys, frames_stack):
     # AC2: артефакт yt-watch — кадры + (когда есть) текст. Нет текста — не повод
     # потерять кадры, которые уже извлечены.
     def _extract(source, seconds, out_path, *args, **kwargs):
@@ -205,7 +205,7 @@ def test_watch_degrades_to_frames_only_when_transcript_is_unavailable(tmp_path: 
     assert "warning" in err.lower() and "transcript" in err.lower()
 
 
-def test_watch_with_captions_carries_no_transcript_note(tmp_path: Path):
+def test_watch_with_captions_carries_no_transcript_note(tmp_path: Path, frames_stack):
     # Обратная сторона: когда текст есть, в шапке ничего лишнего.
     def _extract(source, seconds, out_path, *args, **kwargs):
         _write_frame(out_path, 5 * int(seconds) + 10)
@@ -222,7 +222,7 @@ def test_watch_with_captions_carries_no_transcript_note(tmp_path: Path):
     assert "yt-listen" not in md
 
 
-def test_watch_still_fails_on_an_unexpected_transcript_bug(tmp_path: Path, capsys):
+def test_watch_still_fails_on_an_unexpected_transcript_bug(tmp_path: Path, capsys, frames_stack):
     # AC4: глотаем только объявленный отказ. Настоящий баг обязан быть виден.
     with patch.object(watch_mod, "fetch_video_metadata", return_value=dict(META)), \
          patch.object(watch_mod, "_fetch_snippets", side_effect=RuntimeError("boom")):

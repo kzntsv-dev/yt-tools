@@ -11,25 +11,64 @@ permissions:
 
 jobs:
   tests:
-    name: pytest (full extras)
+    name: pytest (${{ matrix.leg }})
     runs-on: ubuntu-latest
+    strategy:
+      # Two legs, one question each ([[task:2842]]): does the suite survive a real
+      # light-core install — the one a first-time user gets, and the one no job
+      # ran before — and does it still run everything when the extras are there?
+      # Until this existed, `pytest` only ever ran on `[full,ocr]`, so a test that
+      # imported an extra in its body ([[issue:75]]) reddened light installs while
+      # CI stayed green. The `core only` leg is cheap by construction (two small
+      # dependencies); the `full extras` leg keeps the heavy stacks on purpose:
+      # a handful of tests exercise the real audio and OCR pipelines rather than a
+      # mock, and `[ocr]` is in the list because the whole suite once mocked the
+      # engine factory while the published extra resolved to a rapidocr whose
+      # params schema yt-ocr does not speak — a clean `pipx install
+      # "yt-tools-cli[ocr]"` broke with the suite green ([[task:2831]]).
+      # tests/test_ocr_engine.py drives the real engine and needs the network
+      # once, for the ~10 MB PP-OCRv5 model.
+      #
+      # `frames only` ([frames,test]) asks the question the full leg cannot
+      # ([[task:2844]]): on `full,ocr`, `cv2` also arrives through rapidocr, so a
+      # `[frames]` that stopped delivering opencv would stay green there while
+      # `pipx install 'yt-tools-cli[frames]'` gave a `yt-frames` without cv2.
+      #
+      # `expect` is the leg's claim about what it installs: the gate fails a leg
+      # whose declared extra is not importable, so an install that silently drops
+      # a dependency cannot masquerade as a leg that never had the extra (every
+      # gated test would skip "legitimately" — the [[issue:77]] shape).
+      #
+      # Adding a leg is one line of matrix plus its claim; the gate itself needs
+      # no per-leg configuration.
+      fail-fast: false
+      matrix:
+        include:
+          - leg: core only
+            extras: test
+            expect: ""
+          - leg: frames only
+            extras: frames,test
+            expect: frames
+          - leg: full extras
+            extras: full,ocr,test
+            expect: frames,audio,ocr
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The heavy stacks are installed on purpose: a handful of tests exercise the
-      # real audio pipeline rather than a mock, and a suite that is red on a clean
-      # machine teaches everyone to ignore it. `[ocr]` is in the list for the same
-      # reason as the rest: the whole suite mocked the engine factory while the
-      # published extra resolved to a rapidocr whose params schema yt-ocr does not
-      # speak, so a clean `pipx install "yt-tools-cli[ocr]"` broke with the suite
-      # green ([[task:2831]]). tests/test_ocr_engine.py drives the real engine and
-      # needs the network once, for the ~10 MB PP-OCRv5 model.
-      - name: Install
-        run: pip install -e ".[full,ocr,test]"
-      - name: Unit + CLI smoke tests
-        run: pytest -q
+      - name: Install (${{ matrix.leg }})
+        run: pip install -e ".[${{ matrix.extras }}]"
+      # `-rs` prints every skip with its reason, which is the report the gate
+      # reads: on a leg without an extra its gated tests must skip *naming* the
+      # extra, and on a leg with it they must not skip at all.
+      # `--extras-gate-floors` additionally pins how many gated tests the full
+      # suite must contain (a gate that quietly loses its tests would otherwise
+      # pass on nothing) and `--extras-gate-expect` pins what this leg claims to
+      # have installed (tests/conftest.py, tests/extras_gate.py).
+      - name: Unit + CLI smoke tests + extras gate
+        run: pytest -q -rs --extras-gate-floors --extras-gate-expect="${{ matrix.expect }}"
 
   ocr-engine-matrix:
     name: ocr engine (rapidocr ${{ matrix.rapidocr }})
@@ -61,7 +100,7 @@ jobs:
       # the same prerequisite the `tests` job already carries for the model calls
       # it makes.
       - name: Engine tests
-        run: pytest -q tests/test_ocr_engine.py tests/test_ocr.py
+        run: pytest -q -rs tests/test_ocr_engine.py tests/test_ocr.py
 
   build:
     name: build (sdist + wheel, publishable metadata)

@@ -17,11 +17,12 @@ itself, and require text back. Detection is what makes it the guard it is —
 ``_load_engine`` is where rapidocr 3.9 rejects the config, so the failure lands
 here as an ``OcrError``/``rapidocr`` error rather than in a consumer session.
 
-Skipped — never failed — when rapidocr is absent: the light-core jobs install no
-extras, and the ``pytest (full extras)`` CI job installs ``[ocr]`` (see
-``.github/workflows/ci.yml``), which is where this contract is enforced. The
-first construction downloads the ~10 MB PP-OCRv5 ONNX model, so the network is a
-prerequisite of that job, not of a plain ``pytest`` run.
+Skipped — never failed — when rapidocr is absent: the whole module asks for the
+``ocr_stack`` fixture (`tests/conftest.py`), so a leg without ``[ocr]`` gets one
+named skip per test instead of a ``ModuleNotFoundError``, and the CI gate counts
+those skips on the core leg and requires the tests to *run* on the ``full,ocr``
+leg. The first construction downloads the ~10 MB PP-OCRv5 ONNX model, so the
+network is a prerequisite of that leg, not of a plain ``pytest`` run.
 """
 
 from __future__ import annotations
@@ -32,10 +33,11 @@ import pytest
 
 from yt_tools import ocr as ocr_mod
 
-pytest.importorskip(
-    "rapidocr",
-    reason="[ocr] extra not installed (run: pip install 'yt-tools-cli[ocr]')",
-)
+# Every test here drives the real engine, so the gate is the whole module — see
+# the docstring above and `tests/conftest.py`. Requesting the fixture (rather
+# than a module-level `importorskip`) is also what applies the
+# `requires_ocr` marker the gate counts.
+pytestmark = pytest.mark.usefixtures("ocr_stack")
 
 _VID = "abcDEF12345"
 _URL = f"https://youtu.be/{_VID}"

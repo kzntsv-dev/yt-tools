@@ -102,7 +102,7 @@ def test_two_frames_in_one_second_get_two_links():
     assert md.count("![scene at") == 2
 
 
-def test_watch_never_reuses_a_stale_frame_for_another_moment(tmp_path, monkeypatch):
+def test_watch_never_reuses_a_stale_frame_for_another_moment(tmp_path, monkeypatch, frames_stack):
     # Регрессия на блокер, найденный ревью: если имя кадра зависит от списка сцен
     # (счётчик `_N`), то прогон с другим набором сцен попадает в свой `exists()`-кэш и
     # вшивает в markdown чужой кадр. Имя — чистая функция момента, поэтому кэш честен:
@@ -193,14 +193,14 @@ def _run_watch(tmp_path: Path, scenes, intensity_for=None, extract=None, **kwarg
     return path.read_text(encoding="utf-8")
 
 
-def test_watch_caps_embedded_frames_at_the_default_budget(tmp_path: Path):
+def test_watch_caps_embedded_frames_at_the_default_budget(tmp_path: Path, frames_stack):
     # AC8: клип с сотнями склеек не может отдать агенту сотни кадров — тот же дефолт,
     # что и у yt-frames (D2).
     md = _run_watch(tmp_path, [float(i * 5) for i in range(300)])
     assert md.count("![scene at") == DEFAULT_MAX_FRAMES
 
 
-def test_watch_static_video_falls_back_to_a_uniform_scan(tmp_path: Path, capsys):
+def test_watch_static_video_falls_back_to_a_uniform_scan(tmp_path: Path, capsys, frames_stack):
     # AC8 + D6: одна сцена на весь ролик — иначе в markdown попадёт ОДИН кадр на всё
     # видео. Фолбэк идёт через ту же функцию, что у yt-frames, и обязан быть слышен.
     with ExitStack() as stack:
@@ -215,7 +215,7 @@ def test_watch_static_video_falls_back_to_a_uniform_scan(tmp_path: Path, capsys)
     assert "uniform" in capsys.readouterr().err.lower()
 
 
-def test_watch_honours_an_explicit_max_frames(tmp_path: Path):
+def test_watch_honours_an_explicit_max_frames(tmp_path: Path, frames_stack):
     # D4: бюджет распределяется по всему ролику — первый и последний кадр на месте,
     # хвост не обрезан.
     scenes = [float(i * 5) for i in range(20)]
@@ -225,7 +225,7 @@ def test_watch_honours_an_explicit_max_frames(tmp_path: Path):
     assert "](frames/frame_0135.jpg)" in md
 
 
-def test_watch_dedups_identical_frames_and_removes_the_copies(tmp_path: Path):
+def test_watch_dedups_identical_frames_and_removes_the_copies(tmp_path: Path, frames_stack):
     # AC6 + D7 + D15: N идентичных кадров → одна ссылка в markdown, лишних файлов на
     # диске не остаётся (markdown не ссылается на то, чего агент не получит).
     md = _run_watch(tmp_path, [float(i * 5) for i in range(10)], intensity_for=lambda s: 128)
@@ -233,14 +233,14 @@ def test_watch_dedups_identical_frames_and_removes_the_copies(tmp_path: Path):
     assert [p.name for p in (tmp_path / "frames").glob("frame_*.jpg")] == ["frame_0000.jpg"]
 
 
-def test_watch_no_dedup_keeps_the_copies(tmp_path: Path):
+def test_watch_no_dedup_keeps_the_copies(tmp_path: Path, frames_stack):
     # D7: дедуп выключаем явно — копии остаются.
     md = _run_watch(tmp_path, [float(i * 5) for i in range(10)], intensity_for=lambda s: 128, dedup=False)
     assert md.count("![scene at") == 10
     assert len(list((tmp_path / "frames").glob("frame_*.jpg"))) == 10
 
 
-def test_watch_links_match_the_files_on_disk(tmp_path: Path):
+def test_watch_links_match_the_files_on_disk(tmp_path: Path, frames_stack):
     # AC5: каждая ссылка markdown — существующий файл, и лишних файлов нет.
     md = _run_watch(
         tmp_path,
@@ -253,7 +253,7 @@ def test_watch_links_match_the_files_on_disk(tmp_path: Path):
     assert len(linked) > 1
 
 
-def test_watch_cli_max_frames_zero_disables_the_cap(tmp_path: Path):
+def test_watch_cli_max_frames_zero_disables_the_cap(tmp_path: Path, frames_stack):
     # D3: `--max-frames 0` — явный запрос на всё (для автоподбора сцен).
     with _patched_watch(tmp_path, [float(i * 5) for i in range(20)]):
         rc = watch_mod.main([VIDEO_URL, "--out", str(tmp_path), "--max-frames", "0"])
@@ -262,7 +262,7 @@ def test_watch_cli_max_frames_zero_disables_the_cap(tmp_path: Path):
     assert md.count("![scene at") == 20
 
 
-def test_watch_stdout_stays_a_single_line(tmp_path: Path, capsys):
+def test_watch_stdout_stays_a_single_line(tmp_path: Path, capsys, frames_stack):
     # stdout-контракт yt-watch: одна строка — путь к watch.md. `Wrote:` и `note:`
     # принадлежат yt-frames (там артефакт — сами кадры) и в stdout не протекают.
     with _patched_watch(tmp_path, [float(i * 5) for i in range(10)]):
@@ -272,7 +272,7 @@ def test_watch_stdout_stays_a_single_line(tmp_path: Path, capsys):
     assert out == [str((tmp_path / "watch.md").resolve())]
 
 
-def test_watch_reports_dedup_and_cap_counts_on_stderr(tmp_path: Path, capsys):
+def test_watch_reports_dedup_and_cap_counts_on_stderr(tmp_path: Path, capsys, frames_stack):
     # D12: счётчики — в stderr. Агент должен понимать, почему кадров меньше, чем сцен;
     # в stdout они не идут (там контракт одной строки).
     _run_watch(
@@ -286,7 +286,7 @@ def test_watch_reports_dedup_and_cap_counts_on_stderr(tmp_path: Path, capsys):
     assert "thinned to" in err
 
 
-def test_watch_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, capsys):
+def test_watch_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, capsys, frames_stack):
     # Fail-open как у автоподбора yt-frames: контейнер может обещать больше секунд, чем
     # декодирует, и терять из-за одного такого кандидата весь watch.md незачем.
     def _extract(source, seconds, out_path, *args, **kwargs):
@@ -300,7 +300,7 @@ def test_watch_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, capsys):
     assert "skipped" in capsys.readouterr().err.lower()
 
 
-def test_watch_raises_when_no_candidate_can_be_extracted(tmp_path: Path):
+def test_watch_raises_when_no_candidate_can_be_extracted(tmp_path: Path, frames_stack):
     # Обратная сторона fail-open: пустой результат — это не «видео без кадров», а
     # сломанный инструмент (тот же принцип, что в `_extract_candidates`).
     def _extract(source, seconds, out_path, *args, **kwargs):
@@ -310,7 +310,7 @@ def test_watch_raises_when_no_candidate_can_be_extracted(tmp_path: Path):
         _run_watch(tmp_path, [0.0, 5.0], extract=_extract)
 
 
-def test_watch_cli_reports_a_broken_ffmpeg_cleanly(tmp_path: Path, capsys):
+def test_watch_cli_reports_a_broken_ffmpeg_cleanly(tmp_path: Path, capsys, frames_stack):
     # «Инструмент сломан» — одна строка `error:` и код 1, а не трейсбек: у yt-frames
     # тот же контракт (ошибки автоподбора выходят как `error:` без стека).
     def _extract(source, seconds, out_path, *args, **kwargs):

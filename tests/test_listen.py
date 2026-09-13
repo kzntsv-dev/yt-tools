@@ -273,6 +273,10 @@ class TestEstimateKeyFromChroma:
     the sharp spelling.
     """
 
+    # The estimator itself reaches for numpy (the chroma vector's own type),
+    # so this whole class is [audio] even where the input is a plain list.
+    pytestmark = pytest.mark.usefixtures("audio_stack")
+
     def _chroma_for(self, indices_with_weights: dict[int, float], floor: float = 0.0) -> list[float]:
         """Build a 12-element chroma vector. ``floor`` adds uniform noise to non-listed bins."""
         v = [floor] * 12
@@ -405,25 +409,10 @@ def _completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> subpr
     return subprocess.CompletedProcess(args=["ffmpeg"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-@pytest.fixture(scope="module")
-def audio_stack():
-    """``(numpy, librosa)`` or a skip ([[issue:75]], [[task:2840]]).
-
-    Both reach the suite only through the ``[audio]`` extra — they are absent
-    from the core install on purpose ([[requirements:46]] D1/D2), so the three
-    pipeline tests below used to raise ``ModuleNotFoundError`` from an import
-    inside their body on a core-only checkout. That reads as a broken suite when
-    the truth is a missing extra, and CI never saw it because CI installs `[full]`.
-
-    Deliberately **not** a module-level ``importorskip``: the parsers,
-    formatters and key-estimation tests above are pure and must keep running
-    without the heavy stack — silently switching them off would trade a visible
-    failure for an invisible loss.
-    """
-    missing = "the [audio] extra is not installed (pip install 'yt-tools-cli[audio]')"
-    np = pytest.importorskip("numpy", reason=missing)
-    librosa = pytest.importorskip("librosa", reason=missing)
-    return np, librosa
+# `audio_stack` (numpy + librosa, or a skip with the install command) lives in
+# `tests/conftest.py` since [[task:2842]] — the same fixture gates the key
+# estimation class below, and one declaration has to serve both (the CI guard
+# counts the tests behind it by marker). See the module docstring there.
 
 
 def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch, audio_stack):

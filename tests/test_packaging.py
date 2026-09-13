@@ -279,14 +279,27 @@ def test_ci_installs_the_ocr_extra_so_the_engine_test_actually_runs():
     """A guard test that is skipped in CI is worse than no guard.
 
     ``tests/test_ocr_engine.py`` skips when rapidocr is absent (the light-core
-    jobs install nothing), which is the right shape for a local `pytest` run and
+    leg installs nothing), which is the right shape for a local `pytest` run and
     a silent hole in the pipeline: the suite would stay green while nothing
     exercised the engine — the exact state that let [[issue:77]] ship. So the CI
     install line is part of the contract.
+
+    Since [[task:2842]] the pytest job is a two-leg matrix, so the pin reads as
+    three halves instead of one literal line: the ``full extras`` leg declares
+    ``full,ocr,test``, the install step consumes whatever the leg declared, and
+    the extras gate makes the second half load-bearing — on a leg that installs
+    ``[ocr]`` a skipped ``test_ocr_engine`` is a gate violation, so the skip
+    cannot quietly come back.
     """
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert 'pip install -e ".[full,ocr,test]"' in workflow, (
-        "the pytest job must install [ocr], or tests/test_ocr_engine.py skips there too"
+    assert "extras: full,ocr,test" in workflow, (
+        "a pytest leg must install [ocr], or tests/test_ocr_engine.py skips there too"
+    )
+    assert 'pip install -e ".[${{ matrix.extras }}]"' in workflow, (
+        "the leg's extras have to reach the install step — a matrix entry nothing installs is a comment"
+    )
+    assert "--extras-gate-floors" in workflow, (
+        "without the gate the [ocr] leg goes green on skips ([[task:2842]])"
     )
     # ...and the matrix legs are where the *unselected* minor gets exercised: the
     # pytest job resolves whichever rapidocr the bound allows today.
@@ -295,6 +308,29 @@ def test_ci_installs_the_ocr_extra_so_the_engine_test_actually_runs():
             f"the ocr-engine-matrix job must cover rapidocr {verified} — a bound "
             "claiming a version nothing runs against is how issue:77 shipped"
         )
+
+
+def test_ci_proves_the_frames_extra_without_the_ocr_stack():
+    """`[frames]` has to stand on its own, and only its own leg can show that.
+
+    On the `full,ocr` leg `cv2` also arrives through rapidocr (`opencv-python` is
+    one of its dependencies), so a `[frames]` extra that stopped delivering
+    opencv would leave that leg green while `pipx install 'yt-tools-cli[frames]'`
+    handed the user a `yt-frames` without cv2 — the class of [[issue:77]]
+    ([[task:2844]]). The leg is one matrix entry plus its claim; this test is
+    what keeps the entry from being deleted as redundant.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "frames,test" in workflow, (
+        "the [frames]-only leg must install exactly the frames extra (plus [test])"
+    )
+    assert "expect: frames\n" in workflow, (
+        "without a claim the leg cannot tell 'no [frames] here' from 'the install "
+        "dropped opencv' — both skip every gated test"
+    )
+    assert '--extras-gate-expect="${{ matrix.expect }}"' in workflow, (
+        "the leg's claim has to reach pytest, or it is a comment"
+    )
 
 
 @pytest.mark.parametrize("extra", ["audio", "full"])

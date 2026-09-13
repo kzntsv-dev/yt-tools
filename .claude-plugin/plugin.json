@@ -1,7 +1,7 @@
 {
   "name": "yt-tools",
   "displayName": "yt-tools",
-  "version": "0.25.1",
+  "version": "0.25.2",
   "description": "Iterative YouTube watching for agents: clean-markdown transcripts with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), full-metadata extraction (description, chapters, most-replayed, counts, tags), comment scraping, and OCR over cached frames (RapidOCR PP-OCRv5) for silent-with-text videos. Light core (transcript / metadata / comments / search) with heavy stacks in [frames] and [audio] extras. Bundles the using-yt-tools skill and a SessionStart hook that auto-installs from the plugin's local clone via pipx (default [full] extras, fallback to [frames,audio]) and probes ffmpeg.",
   "author": {
     "name": "Victor Kuznetsov",

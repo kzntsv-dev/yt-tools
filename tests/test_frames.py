@@ -101,36 +101,36 @@ def test_thin_evenly_single_and_pair_boundaries():
     assert frames_mod._thin_evenly(items, 2) == [items[0], items[-1]]
 
 
-def test_scene_mode_caps_at_default_max_frames(tmp_path: Path):
+def test_scene_mode_caps_at_default_max_frames(tmp_path: Path, frames_stack):
     # AC1: плотный монтаж (300 склеек) без флагов → не больше дефолтного потолка.
     written = _run_scene(tmp_path, [float(i) for i in range(300)])
     assert len(written) == frames_mod.DEFAULT_MAX_FRAMES
 
 
-def test_scene_mode_cap_keeps_first_and_last_scene(tmp_path: Path):
+def test_scene_mode_cap_keeps_first_and_last_scene(tmp_path: Path, frames_stack):
     # AC2: усечение равномерное — хвост длинного ролика не отрезан.
     written = _run_scene(tmp_path, [float(i) for i in range(300)])
     assert written[0].name == _frame_name(0.0)
     assert written[-1].name == _frame_name(299.0)
 
 
-def test_scene_mode_max_frames_zero_means_uncapped(tmp_path: Path):
+def test_scene_mode_max_frames_zero_means_uncapped(tmp_path: Path, frames_stack):
     # AC3: явный запрос на всё.
     written = _run_scene(tmp_path, [float(i) for i in range(300)], max_frames=0)
     assert len(written) == 300
 
 
-def test_scene_mode_max_frames_override(tmp_path: Path):
+def test_scene_mode_max_frames_override(tmp_path: Path, frames_stack):
     written = _run_scene(tmp_path, [float(i) for i in range(300)], max_frames=5)
     assert len(written) == 5
 
 
-def test_scene_mode_below_cap_is_untouched(tmp_path: Path):
+def test_scene_mode_below_cap_is_untouched(tmp_path: Path, frames_stack):
     written = _run_scene(tmp_path, [float(i) for i in range(12)])
     assert len(written) == 12
 
 
-def test_scene_mode_reports_thinning_on_stderr(tmp_path: Path, capsys):
+def test_scene_mode_reports_thinning_on_stderr(tmp_path: Path, capsys, frames_stack):
     # D12: прозрачность — агент видит, что список был усечён, а не молча урезан.
     _run_scene(tmp_path, [float(i) for i in range(300)])
     err = capsys.readouterr().err
@@ -204,14 +204,14 @@ def test_uniform_timestamps_degenerate_inputs_are_empty():
     assert frames_mod._uniform_timestamps(600.0, 1) == [0.0]
 
 
-def test_static_video_falls_back_to_more_than_one_frame(tmp_path: Path):
+def test_static_video_falls_back_to_more_than_one_frame(tmp_path: Path, frames_stack):
     # AC5: одна сцена на весь ролик — фолбэк обязан дать агенту что смотреть.
     written = _run_scene_with_duration(tmp_path, [0.0], 600.0)
     assert len(written) > 1
     assert written[0].name == _frame_name(0.0)
 
 
-def test_static_video_fallback_warns_on_stderr(tmp_path: Path, capsys):
+def test_static_video_fallback_warns_on_stderr(tmp_path: Path, capsys, frames_stack):
     # AC5 + D6: молчаливый фолбэк запрещён — агент должен понимать, что смотрит
     # равномерный скан, а не сцены.
     _run_scene_with_duration(tmp_path, [0.0], 600.0)
@@ -219,14 +219,14 @@ def test_static_video_fallback_warns_on_stderr(tmp_path: Path, capsys):
     assert "uniform" in err and "fallback" in err
 
 
-def test_fallback_uses_the_whole_budget(tmp_path: Path):
+def test_fallback_uses_the_whole_budget(tmp_path: Path, frames_stack):
     # Дефолтный бюджет — тот же счётчик, что и у капа: одна арифметика на оба приёма.
     written = _run_scene_with_duration(tmp_path, [0.0], 600.0)
     assert len(written) == frames_mod.DEFAULT_MAX_FRAMES
     assert written[-1].name == _frame_name(600.0 * (frames_mod.DEFAULT_MAX_FRAMES - 1) / frames_mod.DEFAULT_MAX_FRAMES)
 
 
-def test_seven_scenes_fall_back_and_eight_do_not(tmp_path: Path, capsys):
+def test_seven_scenes_fall_back_and_eight_do_not(tmp_path: Path, capsys, frames_stack):
     # Порог D6 — строго «меньше 8». Длительность берём такую, чтобы 100 равномерных
     # таймкодов не схлопывались в имена по секундам (issue:74).
     seven = _run_scene_with_duration(tmp_path, [float(i * 10) for i in range(7)], 600.0)
@@ -238,7 +238,7 @@ def test_seven_scenes_fall_back_and_eight_do_not(tmp_path: Path, capsys):
     assert "scene(s) detected" not in capsys.readouterr().err.lower()
 
 
-def test_fallback_extracts_the_uniform_timestamps_it_computed(tmp_path: Path):
+def test_fallback_extracts_the_uniform_timestamps_it_computed(tmp_path: Path, frames_stack):
     # Иначе баг «посчитали равномерно, а извлекаем сцены» прошёл бы мимо всех тестов.
     with patch.object(frames_mod, "_ensure_source_mp4", return_value=tmp_path / "source.mp4"), \
          patch.object(frames_mod, "_detect_scene_timestamps", return_value=[0.0]), \
@@ -248,12 +248,12 @@ def test_fallback_extracts_the_uniform_timestamps_it_computed(tmp_path: Path):
     assert [call.args[1] for call in extract.call_args_list] == [0.0, 150.0, 300.0, 450.0]
 
 
-def test_fallback_respects_explicit_budget(tmp_path: Path):
+def test_fallback_respects_explicit_budget(tmp_path: Path, frames_stack):
     written = _run_scene_with_duration(tmp_path, [0.0], 600.0, max_frames=5)
     assert len(written) == 5
 
 
-def test_fallback_honours_a_cap_of_one(tmp_path: Path, capsys):
+def test_fallback_honours_a_cap_of_one(tmp_path: Path, capsys, frames_stack):
     # Явное число агента не переспрашиваем: попросил один кадр — получил один кадр,
     # но предупреждение о фолбэке всё равно приходит.
     written = _run_scene_with_duration(tmp_path, [0.0], 600.0, max_frames=1)
@@ -261,20 +261,20 @@ def test_fallback_honours_a_cap_of_one(tmp_path: Path, capsys):
     assert "fallback" in capsys.readouterr().err.lower()
 
 
-def test_fallback_uncapped_stays_bounded(tmp_path: Path):
+def test_fallback_uncapped_stays_bounded(tmp_path: Path, frames_stack):
     # --max-frames 0 — «без потолка» для автоподбора сцен; у равномерного скана
     # «всё» = каждый кадр ролика, поэтому берётся минимально осмысленный скан.
     written = _run_scene_with_duration(tmp_path, [0.0], 600.0, max_frames=0)
     assert len(written) == frames_mod.MIN_SCENE_FRAMES
 
 
-def test_zero_scenes_also_fall_back(tmp_path: Path):
+def test_zero_scenes_also_fall_back(tmp_path: Path, frames_stack):
     # Детектор не нашёл вообще ничего — пустой ответ агенту ещё хуже одного кадра.
     written = _run_scene_with_duration(tmp_path, [], 600.0)
     assert len(written) == frames_mod.DEFAULT_MAX_FRAMES
 
 
-def test_fallback_that_cannot_run_is_announced(tmp_path: Path, capsys):
+def test_fallback_that_cannot_run_is_announced(tmp_path: Path, capsys, frames_stack):
     # Fail-open: без длительности равномерный скан не построить — отдаём что есть, не
     # падаем. Но молчать об этом нельзя: агент должен понимать, что вместо скана ему
     # достались одни сцены (а их меньше восьми).
@@ -284,7 +284,7 @@ def test_fallback_that_cannot_run_is_announced(tmp_path: Path, capsys):
     assert "fallback" in err and ("duration" in err or "unknown" in err)
 
 
-def test_enough_scenes_do_not_probe_duration_at_all(tmp_path: Path):
+def test_enough_scenes_do_not_probe_duration_at_all(tmp_path: Path, frames_stack):
     # Лишнее открытие файла на нормальном ролике не нужно.
     with patch.object(frames_mod, "_ensure_source_mp4", return_value=tmp_path / "source.mp4"), \
          patch.object(frames_mod, "_detect_scene_timestamps", return_value=[float(i * 10) for i in range(20)]), \
@@ -349,7 +349,7 @@ def _run_dedup(tmp_path: Path, seconds: list[float], intensity_for, **kwargs) ->
         return frames_mod.run(VIDEO_URL, out_dir=tmp_path / "frames", mode="scene", **kwargs)
 
 
-def test_dedup_drops_a_frame_at_the_threshold_and_keeps_one_above_it(tmp_path: Path):
+def test_dedup_drops_a_frame_at_the_threshold_and_keeps_one_above_it(tmp_path: Path, frames_stack):
     # D8: порог 2.0/255, сравнение строгое: разница ровно 2.0 — ещё копия, 3.0 — уже
     # другой кадр.
     base = _write_frame(tmp_path / "a.jpg", 10)
@@ -359,7 +359,7 @@ def test_dedup_drops_a_frame_at_the_threshold_and_keeps_one_above_it(tmp_path: P
     assert frames_mod._dedup_frames([base, above]) == [base, above]
 
 
-def test_dedup_compares_against_the_last_kept_frame_not_the_previous_one(tmp_path: Path):
+def test_dedup_compares_against_the_last_kept_frame_not_the_previous_one(tmp_path: Path, frames_stack):
     # D8: эталон — последний ОСТАВЛЕННЫЙ кадр. Кадр, равный отброшенному соседу, но
     # отличный от эталона, обязан выжить — иначе медленная серия «шаг в 1.5» съела бы
     # весь ролик до одного кадра.
@@ -369,14 +369,14 @@ def test_dedup_compares_against_the_last_kept_frame_not_the_previous_one(tmp_pat
     assert frames_mod._dedup_frames([first, second, back_to_first]) == [first, second, back_to_first]
 
 
-def test_identical_candidates_collapse_to_one_frame(tmp_path: Path):
+def test_identical_candidates_collapse_to_one_frame(tmp_path: Path, frames_stack):
     # AC6: N подряд идентичных кадров → 1, и лишние файлы не остаются на диске.
     written = _run_dedup(tmp_path, [float(i * 10) for i in range(20)], lambda s: 128)
     assert len(written) == 1
     assert [p.name for p in (tmp_path / "frames").glob("frame_*.jpg")] == [_frame_name(0.0)]
 
 
-def test_frozen_fallback_scan_also_collapses_to_one_frame(tmp_path: Path, capsys):
+def test_frozen_fallback_scan_also_collapses_to_one_frame(tmp_path: Path, capsys, frames_stack):
     # AC6 × D6: «в том числе когда ролик сам ушёл в равномерный скан фолбэка». Иначе
     # заморожённый ролик без сцен отдавал бы агенту сотню копий одного кадра.
     with patch.object(frames_mod, "_ensure_source_mp4", return_value=tmp_path / "source.mp4"), \
@@ -390,13 +390,13 @@ def test_frozen_fallback_scan_also_collapses_to_one_frame(tmp_path: Path, capsys
     assert "dedup dropped" in err, "и дедуп тоже — иначе агент не поймёт, почему кадр один"
 
 
-def test_candidates_that_differ_are_all_kept(tmp_path: Path):
+def test_candidates_that_differ_are_all_kept(tmp_path: Path, frames_stack):
     # Обратный контроль: дедуп не «экономит» на разных кадрах.
     written = _run_dedup(tmp_path, [float(i * 10) for i in range(20)], lambda s: 10 + 3 * int(s // 10))
     assert len(written) == 20
 
 
-def test_timestamps_mode_is_never_deduped(tmp_path: Path):
+def test_timestamps_mode_is_never_deduped(tmp_path: Path, frames_stack):
     # D1: явный запрос не трогаем — даже если все кадры идентичны.
     out = tmp_path / "frames"
     with patch.object(frames_mod, "_ensure_source_mp4", return_value=tmp_path / "source.mp4"), \
@@ -407,7 +407,7 @@ def test_timestamps_mode_is_never_deduped(tmp_path: Path):
     assert len(written) == 20
 
 
-def test_no_dedup_switch_keeps_identical_candidates(tmp_path: Path):
+def test_no_dedup_switch_keeps_identical_candidates(tmp_path: Path, frames_stack):
     # D7: дедуп выключаем флагом, и тогда копии остаются.
     written = _run_dedup(tmp_path, [float(i * 10) for i in range(20)], lambda s: 128, dedup=False)
     assert len(written) == 20
@@ -419,7 +419,7 @@ def test_cli_no_dedup_flag_disables_dedup():
     assert run.call_args.kwargs["dedup"] is False
 
 
-def test_dedup_fails_open_on_an_unreadable_frame(tmp_path: Path):
+def test_dedup_fails_open_on_an_unreadable_frame(tmp_path: Path, frames_stack):
     # AC7/D10: битый кадр остаётся — терять настоящий кадр дороже, чем один раз
     # заплатить за копию. Заметь: настоящий дубль после него дедуп всё равно снимает —
     # fail-open касается нечитаемого кадра, а не всего списка.
@@ -429,7 +429,7 @@ def test_dedup_fails_open_on_an_unreadable_frame(tmp_path: Path):
     assert paths[0] in kept and paths[1] in kept
 
 
-def test_dedup_fails_open_when_the_metric_breaks_for_one_frame(tmp_path: Path):
+def test_dedup_fails_open_when_the_metric_breaks_for_one_frame(tmp_path: Path, frames_stack):
     # AC7/D10: поломка внутри метрики не теряет кадры — сломанный остаётся, а остальные
     # продолжают дедупиться (иначе достаточно было бы любого исключения, чтобы дедуп
     # тихо перестал работать целиком и никто бы этого не заметил).
@@ -447,7 +447,7 @@ def test_dedup_fails_open_when_the_metric_breaks_for_one_frame(tmp_path: Path):
     assert paths[0] in kept and paths[1] in kept
 
 
-def test_dedup_runs_before_the_cap(tmp_path: Path):
+def test_dedup_runs_before_the_cap(tmp_path: Path, frames_stack):
     # D11: копии снимаются первыми, поэтому бюджет достаётся разным кадрам. Половина
     # кандидатов — один и тот же кадр; после дедупа остаётся 1 + 82 разных, и кап 50
     # набирается из разных, а не из «первых 50 кандидатов, из которых 33 — копии».
@@ -463,7 +463,7 @@ def test_dedup_runs_before_the_cap(tmp_path: Path):
     assert written[-1].name == _frame_name(245.0)  # хвост диапазона не отрезан (D4)
 
 
-def test_dedup_and_cap_report_their_counts_on_stderr(tmp_path: Path, capsys):
+def test_dedup_and_cap_report_their_counts_on_stderr(tmp_path: Path, capsys, frames_stack):
     # D12: агент видит, сколько кадров снял дедуп и сколько усекал кап.
     _run_dedup(
         tmp_path,
@@ -476,14 +476,14 @@ def test_dedup_and_cap_report_their_counts_on_stderr(tmp_path: Path, capsys):
     assert "thinned" in err and "50" in err
 
 
-def test_frames_the_agent_never_gets_are_not_announced_as_written(tmp_path: Path, capsys):
+def test_frames_the_agent_never_gets_are_not_announced_as_written(tmp_path: Path, capsys, frames_stack):
     # D15: stdout не объявляет кадр, которого агент не получит.
     written = _run_dedup(tmp_path, [float(i * 10) for i in range(20)], lambda s: 128)
     out = capsys.readouterr().out
     assert out.count("Wrote:") == len(written) == 1
 
 
-def test_cap_deletes_the_candidates_it_thinned_away(tmp_path: Path):
+def test_cap_deletes_the_candidates_it_thinned_away(tmp_path: Path, frames_stack):
     # D15 и для капа, а не только для дедупа: файлы, которых агент не получит, уходят
     # с диска (иначе их подберёт yt-ocr и вшивание кадров).
     written = _run_dedup(
@@ -494,7 +494,7 @@ def test_cap_deletes_the_candidates_it_thinned_away(tmp_path: Path):
     assert on_disk == sorted(p.name for p in written)
 
 
-def test_dedup_may_drop_an_identical_last_candidate(tmp_path: Path):
+def test_dedup_may_drop_an_identical_last_candidate(tmp_path: Path, frames_stack):
     # D14: кап защищает последний ВЫЖИВШИЙ кадр, а не запрещает дедупу трогать хвост.
     # Хвост 110…190s — копия кадра 100s, поэтому последний отданный кадр — 100s, а не
     # 190s: идентичный хвост не несёт информации, терять нечего.
@@ -506,7 +506,7 @@ def test_dedup_may_drop_an_identical_last_candidate(tmp_path: Path):
     assert written[-1].name == _frame_name(100.0)
 
 
-def test_a_single_unextractable_candidate_still_raises(tmp_path: Path):
+def test_a_single_unextractable_candidate_still_raises(tmp_path: Path, frames_stack):
     # Иначе автоподбор на битом ролике молча отдавал бы пустоту.
     def _extract(*args, **kwargs):
         raise RuntimeError("ffmpeg extract at 0.0s failed (exit 1)")
@@ -528,7 +528,7 @@ def test_a_single_unextractable_candidate_still_raises(tmp_path: Path):
 # хвостового. Явный --timestamps остаётся строгим — там момент назвал человек.
 
 
-def test_auto_selection_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, capsys):
+def test_auto_selection_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, capsys, frames_stack):
     def _extract(source, seconds, out_path, *args, **kwargs):
         if seconds > 90.0:
             raise RuntimeError(f"ffmpeg extract at {seconds}s failed (exit 1)")
@@ -542,7 +542,7 @@ def test_auto_selection_skips_a_candidate_ffmpeg_cannot_extract(tmp_path: Path, 
     assert "skipped" in capsys.readouterr().err.lower()
 
 
-def test_auto_selection_raises_when_no_candidate_can_be_extracted(tmp_path: Path):
+def test_auto_selection_raises_when_no_candidate_can_be_extracted(tmp_path: Path, frames_stack):
     # Иначе сломанный тулчейн (нет ffmpeg, битый файл) молча отдавал бы пустоту.
     def _extract(*args, **kwargs):
         raise RuntimeError("ffmpeg not found on PATH")
@@ -571,7 +571,7 @@ def test_timestamps_mode_stays_strict_about_a_bad_timestamp(tmp_path: Path):
 # видел меньше кадров, чем ему объявили, а дедуп считал урезанный набор.
 
 
-def test_candidates_inside_one_second_become_separate_files(tmp_path: Path):
+def test_candidates_inside_one_second_become_separate_files(tmp_path: Path, frames_stack):
     seconds = [10.1, 10.4, 10.9, 11.2, 12.3, 13.4, 14.5, 15.6]  # 8 сцен — фолбэк не нужен
     written = _run_dedup(tmp_path, seconds, lambda s: 10 + int(s) % 200, dedup=False, max_frames=0)
     names = sorted(p.name for p in written)
@@ -589,7 +589,7 @@ def test_candidates_inside_one_second_become_separate_files(tmp_path: Path):
     assert on_disk == names
 
 
-def test_uniform_scan_reports_as_many_frames_as_it_writes(tmp_path: Path):
+def test_uniform_scan_reports_as_many_frames_as_it_writes(tmp_path: Path, frames_stack):
     # AC task:2782: сколько строк `Wrote:`, столько файлов на диске. До правки 100
     # кандидатов на ролике короче 100 секунд давали ~30 уникальных имён.
     seconds = [30.0 * i / 100 for i in range(100)]
