@@ -11,6 +11,17 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.24.1] — 2026-09-13
+
+### Fixed
+
+- The plugin install line named a marketplace that no longer exists:
+  `yt-tools@opeitcloc03-claude-plugins` → `yt-tools@kzntsv-dev-claude-plugins`.
+  The marketplace *name* is a string in `.claude-plugin/marketplace.json`, not a
+  property of the GitHub account — renaming the account rewrites paths (and
+  redirects the old one), never file contents. The catalog was renamed today;
+  this repository's README and skill still pointed at the retired name.
+
 ## [0.24.0] — 2026-09-13
 
 ### Added

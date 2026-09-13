@@ -42,7 +42,7 @@ use in any environment). PyPI distribution is deferred to a future release.
 
 ```text
 /plugin marketplace add kzntsv-dev/claude-plugins
-/plugin install yt-tools@opeitcloc03-claude-plugins
+/plugin install yt-tools@kzntsv-dev-claude-plugins
 ```
 
 The plugin's `SessionStart` hook installs the package from its own clone —
