@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools-cli"
-version = "0.23.0"
+version = "0.23.1"
 description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), and OCR over cached frames for silent-with-text videos."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -56,20 +56,27 @@ frames = [
 # yt-listen — spectral features, spectrogram rendering, librosa-only fallback.
 # Capped below 1.0: bpm-detector 1.1.0 calls ``librosa.beat.tempo``, removed in
 # librosa 1.0 — an uncapped range resolves to a combination where yt-listen
-# raises inside the third-party dep. Drop the cap once bpm-detector supports 1.x.
+# raises inside the third-party dep, both for the injected bpm-detector (hook)
+# and for any user-added one. Drop the cap once bpm-detector supports 1.x.
 audio = [
     "librosa>=0.11.0,<1.0",
     "matplotlib>=3.8",
 ]
-# The agent default (plugin SessionStart hook) — same dist set as the pre-0.14
-# default install (core + frames + audio + bpm-detector), so the agent path pays
-# nothing new. NOT [ocr]: the ONNX model is a ~10 MB lazy download and is always
-# an explicit install (D3).
+# The agent default (plugin SessionStart hook). Identical requirement strings
+# to [frames] and [audio] (PEP 621 has no self-extras; a test pins them to the
+# letter). NOT [ocr]: the ONNX model is a ~10 MB lazy download and is always an
+# explicit install (D3).
+#
+# bpm-detector is deliberately absent: it is not on PyPI, so it can only be a
+# PEP 508 direct reference — and PyPI rejects those in Requires-Dist with
+# "400 Can't have direct dependency" at upload time. It builds fine, so the
+# failure would only surface on a tag. The plugin hook injects it on top of
+# this extra, best-effort (scripts/ensure-install.sh); a PyPI user adds it with
+# `pipx inject`. See [[requirements:46]] D3.
 full = [
     "scenedetect[opencv]>=0.6.4",
     "librosa>=0.11.0,<1.0",
     "matplotlib>=3.8",
-    "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0",
 ]
 ocr = [
     "rapidocr>=3.8",
@@ -93,8 +100,21 @@ yt-watch = "yt_tools.watch:main"
 yt-listen = "yt_tools.listen:main"
 yt-tools = "yt_tools.cli:main"
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.hatch.build.targets.sdist]
+# Dev-repo meta must never reach a published sdist. The curated pub tree drops
+# these files, but a build run in the dev tree picks up everything git does not
+# ignore — and dev's .gitignore deliberately keeps them (its negations mirror
+# pub's backstop). Belt is the curated copy, braces are this list; the artifact
+# is checked by scripts/check-metadata.py in CI and again before the upload.
+exclude = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".mappa",
+    ".mappa-manifest.json",
+    ".pi",
+    ".wiki",
+    ".tasks",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["yt_tools"]

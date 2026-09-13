@@ -1,4 +1,4 @@
-"""Packaging contract — cheap first install ([[requirements:46]] D1–D3, D11, AC1, AC8).
+"""Packaging contract — cheap first install ([[requirements:46]] D1–D4, D11, AC1, AC8).
 
 Guards that the heavy stacks live in extras and never in the core
 ``dependencies``: a plain ``pip install .`` must not pull
@@ -75,6 +75,25 @@ CLI_ENTRY_POINTS = {
 }
 
 HOOK_SCRIPTS = ("ensure-install.sh", "ensure-install.ps1")
+
+# bpm-detector is not on PyPI (404 on both the JSON API and the simple index),
+# so it can only arrive as a VCS direct reference — which the *published*
+# metadata cannot carry (see the PyPI section below). It is injected on top of
+# the `[full]` install instead, best-effort.
+BPM_DETECTOR_URL = "git+https://github.com/libraz/bpm-detector@v1.1.0"
+
+# The same two-part shape as HOOK_INSTALL_TARGETS: the inject call itself, and
+# the warn-only guard around it (a missing enrichment must never fail the hook).
+HOOK_BPM_INJECT: dict[str, tuple[str, ...]] = {
+    "ensure-install.sh": (
+        r'if\s+!\s+pipx_run\s+inject\s+yt-tools-cli\s+"\$\{BPM_DETECTOR_SPEC\}"',
+        r'WARN:.*bpm-detector inject failed',
+    ),
+    "ensure-install.ps1": (
+        r'Invoke-Pipx\s+inject\s+yt-tools-cli\s+\$BpmDetectorSpec',
+        r'WARN:.*bpm-detector inject failed',
+    ),
+}
 
 # The extras a hook script must pass to its *actual* pipx call. Patterns, not
 # substrings: the log lines around these commands also mention `[full]` and
@@ -198,10 +217,20 @@ def test_librosa_1x_is_excluded(extra):
     )
 
 
-# ---- D3: [full] = core + frames + audio + bpm-detector, without [ocr] -------
+# ---- D3: [full] = core + frames + audio, without [ocr] ----------------------
+#
+# [test-modify: test_full_extra_covers_core_frames_audio_plus_bpm_detector: was
+#  `expected = CORE_DISTS | _names(extras["frames"]) | _names(extras["audio"]) |
+#   {"bpm-detector"}`; is `expected = CORE_DISTS | _names(extras["frames"]) |
+#   _names(extras["audio"])` and the test is renamed to
+#   `test_full_extra_covers_core_frames_and_audio`, with the exclusion asserted
+#   separately below; reason: PyPI rejected the v0.23.0 upload with 400
+#   "Can't have direct dependency: bpm-detector @ git+…" — a direct reference
+#   cannot be published, so bpm-detector moved out of the metadata and into the
+#   plugin hook's best-effort inject (requirements:46 D3 amended)]
 
 
-def test_full_extra_covers_core_frames_audio_plus_bpm_detector():
+def test_full_extra_covers_core_frames_and_audio():
     project = _pyproject()["project"]
     extras = project["optional-dependencies"]
     # PEP 621: extras are additive to `dependencies`, so `pip install yt-tools[full]`
@@ -209,8 +238,21 @@ def test_full_extra_covers_core_frames_audio_plus_bpm_detector():
     # also catches anything unexpected leaking in (e.g. the OCR model).
     effective_full = _names(project["dependencies"]) | _names(extras["full"])
 
-    expected = CORE_DISTS | _names(extras["frames"]) | _names(extras["audio"]) | {"bpm-detector"}
+    expected = CORE_DISTS | _names(extras["frames"]) | _names(extras["audio"])
     assert effective_full == expected
+
+
+def test_full_extra_excludes_bpm_detector_because_it_cannot_be_published():
+    """The enrichment is injected by the hook, never declared in the metadata.
+
+    Not a style preference: `Requires-Dist` with a direct reference is rejected
+    by PyPI on upload (HTTP 400), so any `[full]` that carries it is
+    unpublishable — and nothing local catches that before the tag.
+    """
+    full = _pyproject()["project"]["optional-dependencies"]["full"]
+    assert not ({"bpm-detector"} & _names(full)), (
+        "D3 (amended): bpm-detector is a VCS dep and cannot be published — inject it from the hook"
+    )
 
 
 def test_full_repeats_the_extra_pins_verbatim():
@@ -237,6 +279,93 @@ def test_full_extra_excludes_the_ocr_model():
     project = _pyproject()["project"]
     full = _names(project["optional-dependencies"]["full"])
     assert not (full & {"rapidocr", "onnxruntime"}), "D3: the OCR model is a lazy, explicit install"
+
+
+# ---- PyPI: the published metadata must carry no direct references ----------
+#
+# PyPI rejects PEP 508 direct references in Requires-Dist with an HTTP 400.
+# Observed live on the v0.23.0 upload (2026-09-13) — the release died at the
+# index with:
+#
+#   400 Bad Request — Can't have direct dependency:
+#   bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0 ; extra == "full"
+#
+# A direct ref builds fine and `twine check` is happy, so the only other place
+# this surfaces is the upload — on a tag, where it costs a version number.
+# Source-level guard it is.
+
+DIRECT_REF_RE = re.compile(
+    r"@\s*(?:git\+|hg\+|svn\+|bzr\+|https?://|file:|ssh://)", re.IGNORECASE
+)
+
+#: Path segments that exist only in the private dev repo. The artifact-level
+#: gate (``scripts/check-metadata.py``) owns the list for built archives; this
+#: is the source-level half of the same contract.
+META_ARTIFACT_PATHS = {
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".mappa",
+    ".mappa-manifest.json",
+    ".pi",
+    ".wiki",
+    ".tasks",
+}
+
+
+def _requirement_groups() -> dict[str, list[str]]:
+    project = _pyproject()["project"]
+    groups = {"dependencies": list(project["dependencies"])}
+    for extra, specs in project["optional-dependencies"].items():
+        groups[f"optional-dependencies.{extra}"] = list(specs)
+    return groups
+
+
+def test_sdist_build_excludes_dev_repo_meta():
+    """The public sdist must not carry the dev repo's meta — in any tree.
+
+    ``python -m build`` in the *dev* tree picks up everything git does not
+    ignore, and dev's ``.gitignore`` deliberately keeps ``AGENTS.md``,
+    ``.mappa/`` and ``.pi/`` (its negation rules mirror pub's backstop). The
+    curated copy drops them, so this only bites when a build runs in dev — which
+    is precisely how a canon snapshot would get published by accident.
+    ``scripts/check-metadata.py`` is the artifact-level gate (CI and the release
+    job); this is the fast guard that the exclude list stays real.
+    """
+    hatch = _pyproject().get("tool", {}).get("hatch", {})
+    sdist = hatch.get("build", {}).get("targets", {}).get("sdist", {})
+    patterns = {p.strip().strip("/").removesuffix("/**") for p in sdist.get("exclude", [])}
+    missing = META_ARTIFACT_PATHS - patterns
+    assert not missing, (
+        f"the sdist target must exclude {sorted(missing)} — dev-repo meta in a "
+        "published sdist is a leak; see scripts/check-metadata.py"
+    )
+
+
+def test_published_metadata_carries_no_direct_references():
+    offenders = {
+        group: [spec for spec in specs if DIRECT_REF_RE.search(spec)]
+        for group, specs in _requirement_groups().items()
+    }
+    offenders = {group: specs for group, specs in offenders.items() if specs}
+    assert not offenders, (
+        f"PyPI rejects direct references in Requires-Dist (HTTP 400 on upload): {offenders}. "
+        "Install such a dependency outside the metadata (hook inject / a README step)."
+    )
+
+
+def test_hatch_direct_reference_escape_hatch_is_closed():
+    """`allow-direct-references` is what let the rejected metadata build at all.
+
+    It is a build-time permission, not a publish-time one: with it on, hatchling
+    happily writes `bpm-detector @ git+…` into METADATA and the failure is
+    deferred to the upload. Removing the last direct ref makes it dead weight;
+    keeping it off means the next one fails at `python -m build`, locally.
+    """
+    hatch = _pyproject().get("tool", {}).get("hatch", {})
+    assert not hatch.get("metadata", {}).get("allow-direct-references", False), (
+        "tool.hatch.metadata.allow-direct-references is set — it lets a direct "
+        "reference build and defers the failure to the PyPI upload"
+    )
 
 
 # ---- D11: no breaking CLI change -------------------------------------------
@@ -337,7 +466,53 @@ def test_hook_fallback_keeps_frames_and_audio(script_name):
         )
 
 
+@pytest.mark.parametrize("script_name", HOOK_SCRIPTS)
+def test_hook_injects_bpm_detector_best_effort(script_name):
+    """bpm-detector cannot ride the published `[full]` extra, so the hook adds it.
+
+    The enrichment (chord progression, structure, refined BPM/key) is worth a
+    VCS fetch on the agent path, but it is not worth a failed install: a blocked
+    fetch (corporate proxy) must leave the librosa-only path, which every flow
+    already tolerates. Both halves are asserted — the inject call, and the
+    WARN-not-exit guard around it.
+    """
+    code = _code_lines((ROOT / "scripts" / script_name).read_text(encoding="utf-8"))
+    for pattern in HOOK_BPM_INJECT[script_name]:
+        assert re.search(pattern, code), (
+            f"{script_name}: bpm-detector inject missing or not warn-only (no match for {pattern!r})"
+        )
+
+
+@pytest.mark.parametrize("script_name", HOOK_SCRIPTS)
+def test_hook_pins_bpm_detector_to_the_url_requirement_46_records(script_name):
+    """The spec lives in the hook now, so the URL is asserted there — verbatim."""
+    code = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+    assert BPM_DETECTOR_URL in code, (
+        f"{script_name}: expected the bpm-detector VCS spec to carry {BPM_DETECTOR_URL!r}"
+    )
+
+
 # ---- documentation ----------------------------------------------------------
+
+
+def test_readme_documents_bpm_detector_outside_the_metadata():
+    """The README table is where a PyPI user learns why the enrichment is extra work.
+
+    `[full]` no longer pulls bpm-detector (it cannot), so a README that still
+    advertises it as part of `[full]` promises a capability the install does not
+    deliver.
+    """
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "bpm-detector" in readme, "README must still mention the optional enrichment"
+    assert "pipx inject yt-tools-cli" in readme, (
+        "README must show how to add bpm-detector on top of an install"
+    )
+    full_row = next(
+        (line for line in readme.splitlines() if line.startswith("| `[full]`")), ""
+    )
+    assert "bpm-detector" not in full_row, (
+        "the `[full]` table row must not advertise bpm-detector: the extra cannot carry it"
+    )
 
 
 def test_readme_documents_every_extra():

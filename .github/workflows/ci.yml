@@ -27,6 +27,33 @@ jobs:
       - name: Unit + CLI smoke tests
         run: pytest -q
 
+  build:
+    name: build (sdist + wheel, publishable metadata)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+      # The release job builds these same artifacts on a tag. Running the build
+      # here too is cheap insurance: a packaging mistake should cost a red CI
+      # run, not a burned version number. v0.23.0 is the case in point — build
+      # green, `twine check` green, and PyPI answered 400 on upload because a
+      # `Requires-Dist` carried a direct reference (`bpm-detector @ git+…`).
+      - name: Build + twine check
+        run: |
+          python -m build
+          python -m twine check dist/*
+      - name: Publishable metadata (no direct refs, no dev-repo meta)
+        run: python scripts/check-metadata.py dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
   gate:
     name: install contract (AC4/AC5)
     runs-on: ubuntu-latest

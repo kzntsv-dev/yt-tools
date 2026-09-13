@@ -55,12 +55,14 @@ orchestrates the flows (discovery search / iterative watch / targeted
 frames / audio analysis / metadata / comments / OCR) for the agent.
 
 The hook installs the `[full]` extra by default: core + `[frames]` +
-`[audio]` + `bpm-detector`, so every flow except OCR works on a fresh
-install. The `[ocr]` extra (RapidOCR + onnxruntime, plus a ~10 MB model
-downloaded lazily on first run) is always opt-in — see the OCR section
-below. If the `bpm-detector` VCS fetch is blocked (proxy), the hook falls
-back to `[frames,audio]`: everything still works, `yt-listen` just uses its
-librosa-only path.
+`[audio]`, so every flow except OCR works on a fresh install. On top of that it
+injects [`bpm-detector`](https://github.com/libraz/bpm-detector) best-effort —
+chord progression, structural segments, refined BPM and a confidence-scored key
+per timestamp. That one cannot ride the extra itself (see
+[installing bpm-detector](#installing-bpm-detector)), and a blocked VCS fetch
+(proxy) leaves a working install: `yt-listen` just uses its librosa-only path.
+The `[ocr]` extra (RapidOCR + onnxruntime, plus a ~10 MB model downloaded lazily
+on first run) is always opt-in — see the OCR section below.
 
 The plugin marketplace catalog lives at
 [`kzntsv-dev/claude-plugins`](https://github.com/kzntsv-dev/claude-plugins);
@@ -109,13 +111,28 @@ matplotlib. Heavier stacks are opt-in, per flow.
 | `[frames]` | `scenedetect[opencv]` (OpenCV) | `yt-frames --mode scene`, `yt-watch`, and dedup in the other frame modes |
 | `[audio]` | `librosa`, `matplotlib` | `yt-listen` (spectral features, spectrogram, BPM/key) |
 | `[ocr]` | `rapidocr`, `onnxruntime` | `yt-ocr` (PP-OCRv5; ONNX model downloaded on first run) |
-| `[full]` | core + `[frames]` + `[audio]` + `bpm-detector` | everything above except `yt-ocr` — this is what the plugin hook installs |
+| `[full]` | core + `[frames]` + `[audio]` | everything above except `yt-ocr` — this is what the plugin hook installs |
 
-`[full]` adds
-[`bpm-detector`](https://github.com/libraz/bpm-detector) (VCS dep, not yet
-on PyPI) on top of `[audio]`: chord progression, structural segments,
-refined BPM and a confidence-scored key per timestamp. Without it,
-`yt-listen` gracefully falls back to librosa-only basics.
+#### Installing bpm-detector
+
+`[full]` deliberately stops at `[frames]` + `[audio]`. The optional
+[`bpm-detector`](https://github.com/libraz/bpm-detector) enrichment (chord
+progression, structural segments, refined BPM, a confidence-scored key per
+timestamp) is not on PyPI, so it can only be a PEP 508 *direct reference* — and
+PyPI rejects those inside the published metadata with
+`400 Can't have direct dependency`. A VCS dependency in `pyproject.toml`
+therefore builds fine, passes `twine check`, and fails only at upload time,
+which is exactly how release `v0.23.0` died.
+
+So the enrichment moved out of the metadata. The plugin hook injects it right
+after the `[full]` install, best-effort; on a PyPI install you add it yourself:
+
+```bash
+pipx inject yt-tools-cli "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+```
+
+Without it `yt-listen` still runs: librosa-only BPM and key, with every section
+it cannot fill marked `n/a` in the markdown rather than silently missing.
 
 > **Adding an extra to an existing pipx venv.** Re-run `pipx install --force`
 > with the full extras list (as in step 3) rather than installing a second

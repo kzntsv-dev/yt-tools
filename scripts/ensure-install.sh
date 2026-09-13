@@ -16,6 +16,13 @@ set -u
 
 log() { printf '[yt-tools] %s\n' "$*" >&2; }
 
+# bpm-detector is enrichment for yt-listen (chord progression, structure,
+# refined BPM/key) and is not on PyPI — so it cannot ride the published
+# `[full]` extra: PyPI rejects PEP 508 direct references in Requires-Dist with
+# "400 Can't have direct dependency" at upload time (release v0.23.0 died on
+# exactly that). It is injected on top of the install instead, best-effort.
+BPM_DETECTOR_SPEC="bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+
 # 0. Resolve plugin root ───────────────────────────────────────────────────
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 if [ -z "$PLUGIN_ROOT" ]; then
@@ -104,19 +111,32 @@ if [ "$needs_install" = "true" ]; then
             log "WARN: pipx uninstall yt-tools-cli failed; will attempt install anyway."
     fi
 
-    # Install with [full] extras — core + [frames] + [audio] + bpm-detector
-    # (chord progression + structure detection). [ocr] stays opt-in. If the
-    # VCS dep fetch fails (corporate proxy blocking PEP 508 direct refs,
-    # transient network), fall back to core + [frames,audio]: every flow
-    # except [ocr] still works, Flow C runs the librosa-only path.
+    # Install with [full] extras — core + [frames] + [audio]. [ocr] stays
+    # opt-in, and bpm-detector is injected separately (BPM_DETECTOR_SPEC at the
+    # top): it cannot live in the metadata.
     pipx_args=(install)
     if [ -n "${YT_TOOLS_PYTHON:-}" ]; then
         pipx_args+=(--python "$YT_TOOLS_PYTHON")
     fi
-    if ! pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
-        log "WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to [frames,audio] install."
-        if ! pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[frames,audio]" >&2; then
+    install_ok=false
+    if pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
+        install_ok=true
+    else
+        log "WARN: install with [full] extras failed; falling back to [frames,audio] install."
+        if pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[frames,audio]" >&2; then
+            install_ok=true
+        else
             log "WARN: [frames,audio] install also failed. Investigate pipx state."
+        fi
+    fi
+
+    # bpm-detector on top of [full] — best-effort. A blocked VCS fetch
+    # (corporate proxy, transient network) must leave a working install: the
+    # enrichment is chord/structure/BPM refinement, not a flow of its own, and
+    # yt-listen already renders the librosa-only path with explicit n/a markers.
+    if [ "$install_ok" = "true" ]; then
+        if ! pipx_run inject yt-tools-cli "${BPM_DETECTOR_SPEC}" >&2; then
+            log "WARN: bpm-detector inject failed (VCS fetch blocked?); yt-listen runs the librosa-only path."
         fi
     fi
 fi

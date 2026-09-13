@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.23.0
+version: 0.23.1
 description: Seven flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. **OCR** (`yt-ocr`, silent-with-text fallback) — RapidOCR PP-OCRv5 over cached frames → `[mm:ss]` blocks as a transcript substitute when `yt-transcript` is empty or the video is silent-instructional (burned-in captions, schematic labels, chord matrices). Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", "read text from frames", "OCR this video", "what does the caption say", "extract overlay text", "captions burned in", "прочти текст с кадров", "OCR этого видео", "silent video с текстом", or any youtube.com URL. CLI installed once per machine with pipx (`pipx install 'yt-tools-cli[full]'` adds the audio/chord stack); `yt-tools doctor` is the read-only preflight that names whatever is missing. YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
@@ -110,8 +110,8 @@ Seven distinct flows, picked by user intent:
   missing on the running yt-tools install, `yt-ocr` exits nonzero with
   both install hints (`pipx inject yt-tools-cli rapidocr onnxruntime` /
   `pip install 'yt-tools-cli[ocr]'`). The plugin's SessionStart hook
-  installs `[full]` (core + `[frames]` + `[audio]` + `bpm-detector`)
-  only, **not** `[ocr]` — first run
+  installs `[full]` (core + `[frames]` + `[audio]`, plus a
+  best-effort `bpm-detector` inject) only, **not** `[ocr]` — first run
   of Flow F on a machine may need the inject step.
 - Trigger phrases: "read text from frames", "OCR this video", "what
   does the caption say", "extract overlay text", "captions burned in",

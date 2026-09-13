@@ -11,6 +11,41 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.23.1] — 2026-09-13
+
+> `0.23.0` never reached PyPI: the upload was rejected and no artifact exists
+> for it, so the first installable version is this one.
+
+### Fixed
+
+- **PyPI rejected the `0.23.0` upload with `400 Can't have direct dependency`.**
+  `[full]` carried `bpm-detector @ git+…` — a PEP 508 direct reference — and PyPI
+  refuses those in `Requires-Dist`. `python -m build` and `twine check` both
+  accept them, so the failure existed only on the tag. `[full]` is now core +
+  `[frames]` + `[audio]`; the plugin hook injects bpm-detector on top of it
+  best-effort, and a PyPI install adds it with `pipx inject yt-tools-cli …`
+  (README, *Installing bpm-detector*). Without it `yt-listen` still runs —
+  librosa-only BPM/key, with the sections it cannot fill marked `n/a`.
+- `[tool.hatch.metadata] allow-direct-references` is gone. It is what let the
+  rejected metadata build at all; with no direct references left it is dead
+  weight, and keeping it off means the next one fails at `python -m build`.
+
+### Added
+
+- `scripts/check-metadata.py`: gates the built artifacts — no direct references
+  in `Requires-Dist`, no dev-repo meta (`AGENTS.md`, `CLAUDE.md`, `.mappa/`,
+  `.wiki/`, `.tasks/`, `.pi/`) inside the wheel or the sdist. It runs in CI and
+  again in the release job, on the exact artifacts about to be uploaded.
+- A `build` job in `ci.yml`: sdist + wheel + `twine check` + the metadata gate on
+  every push. A packaging mistake now costs a red run instead of a version
+  number.
+- The sdist target excludes the dev-repo meta (`AGENTS.md`, `CLAUDE.md`,
+  `.mappa/`, `.mappa-manifest.json`, `.pi/`, `.wiki/`, `.tasks/`). The curated
+  pub tree already drops those files, but a build run in the *dev* tree picked
+  them up — dev's `.gitignore` keeps them on purpose — so `python -m build` from
+  a dev checkout put a canon snapshot into the sdist. The new gate found this on
+  its first run.
+
 ## [0.23.0] — 2026-09-13
 
 ### Changed

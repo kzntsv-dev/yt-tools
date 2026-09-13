@@ -29,6 +29,10 @@ jobs:
           python -m pip install --upgrade build twine
           python -m build
           python -m twine check dist/*
+      # Last line of defence, on the exact artifacts about to be uploaded: the
+      # same check CI runs, because this is the run where a miss costs a version.
+      - name: Publishable metadata
+        run: python scripts/check-metadata.py dist
       - uses: actions/upload-artifact@v4
         with:
           name: dist
