@@ -11,6 +11,36 @@ Releases before 0.8.0 are summarized only in the git log.
 
 _(nothing yet)_
 
+## [0.25.0] — 2026-09-13
+
+### Added
+
+- **`yt-ocr` works on rapidocr 3.9** ([[task:2833]]). The 0.24.2 cap (`<3.9`) is
+  gone: `yt_tools/ocr.py` now names the model type alongside the model version
+  for Det/Cls/Rec, so the params dict means the same thing on every 3.x release
+  instead of inheriting a version-dependent default (3.8 → PP-OCRv4+`mobile`,
+  3.9 → PP-OCRv6+`small`, and PP-OCRv5 has no `small` — that inheritance was
+  [[issue:77]]). The bound is now `>=3.8,<4`: a major is where a params-API
+  change would land.
+- **A CI matrix over the verified minors** (`ocr-engine-matrix`: rapidocr 3.8.4
+  and 3.9.2, engine tests only). The old pin asked users on the *newer* minor to
+  be the acceptance test; now both legs run on every push.
+- **A per-language engine test.** Every `--language` value the CLI advertises is
+  built against the real model registry — the guard for the bug below.
+
+### Fixed
+
+- **`--language ja` never worked.** PP-OCRv5 ships twelve recognizers and
+  Japanese is not one of them: asking for `PP-OCRv5 + japan` resolved to nothing,
+  and the engine raised `error: Invalid OCR configuration` — on 3.8.4 as much as
+  3.9.2, i.e. in every release that ever offered the flag. It used to "work" only
+  because the library's lenient fallback picked the PP-OCRv4 Japanese model, and
+  once the model type was pinned explicitly (above) that fallback was skipped.
+  Japanese now pins the v4 recognizer on purpose, and `ocr.md`'s header says so
+  instead of claiming PP-OCRv5: `RapidOCR (PP-OCRv5 det/cls + PP-OCRv4 ja rec)`.
+  Found by running the language matrix while adapting to 3.9 — the same mocked
+  seam that hid [[issue:77]].
+
 ## [0.24.2] — 2026-09-13
 
 ### Fixed

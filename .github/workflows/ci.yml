@@ -31,6 +31,38 @@ jobs:
       - name: Unit + CLI smoke tests
         run: pytest -q
 
+  ocr-engine-matrix:
+    name: ocr engine (rapidocr ${{ matrix.rapidocr }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Both legs are the point: `[ocr]` is a pin on a third-party params API,
+      # and release 0.24.0/0.24.1 shipped broken because the *newer* minor was
+      # never exercised — the engine factory was mocked in every test, so the
+      # suite was green while a clean install could not construct the engine at
+      # all ([[issue:77]], [[task:2831]]). 0.25.0 names every model version and
+      # model type explicitly ([[task:2833]]); the verified minors live here and
+      # in the `[ocr]` bound, and tests/test_packaging.py asserts the two agree.
+      fail-fast: false
+      matrix:
+        rapidocr: ["3.8.4", "3.9.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # `[ocr]` alone is enough: the engine tests need rapidocr, onnxruntime and
+      # cv2 (a rapidocr dependency) — nothing from [full] or [audio]. The second
+      # install pins the leg, since the extra's bound spans both.
+      - name: Install ([ocr] at ${{ matrix.rapidocr }})
+        run: |
+          python -m pip install -e ".[ocr,test]"
+          python -m pip install "rapidocr==${{ matrix.rapidocr }}"
+      # First construction downloads the ~8 MB model, so this leg needs network —
+      # the same prerequisite the `tests` job already carries for the model calls
+      # it makes.
+      - name: Engine tests
+        run: pytest -q tests/test_ocr_engine.py tests/test_ocr.py
+
   build:
     name: build (sdist + wheel, publishable metadata)
     runs-on: ubuntu-latest

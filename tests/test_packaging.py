@@ -214,31 +214,32 @@ def test_ocr_extra_is_unchanged():
     assert ocr == {"rapidocr", "onnxruntime"}
 
 
-def test_ocr_extra_pins_rapidocr_below_3_9():
-    """`yt_tools/ocr.py` builds the RapidOCR **3.8.x** params schema (task:2831).
+def test_ocr_extra_keeps_the_rapidocr_3x_params_bound():
+    """The bound encodes a params-API boundary, not a version grudge (task:2833).
 
-    ``params["Det.ocr_version"] = OCRVersion.PPOCRV5`` (+ Cls/Rec) and the
-    ``LangRec`` overrides are 3.8.x-shaped. 3.9.x changed the schema and rejects
-    the dict at construction — ``error: Invalid OCR configuration`` — which is
-    what a clean ``pipx install "yt-tools-cli[ocr]"`` hit: 0.24.0/0.24.1 declared
-    ``rapidocr>=3.8``, the resolver picked 3.9.2, and every ``yt-ocr`` run died
-    on a machine that had installed exactly what the metadata asked for.
+    0.24.2 capped `rapidocr<3.9`: `ocr.py` pinned `ocr_version=PP-OCRv5` but left
+    `model_type` at the library default, and 3.9 moved that default to
+    `PP-OCRv6 + small` where the v5 family has no `small` — so a clean install
+    died with `error: Invalid OCR configuration` ([[issue:77]]). The fix names
+    every component's version *and* model type, which makes the config
+    release-independent and lets 3.9.x back in; the remaining cap is the major
+    version, because that is the boundary a params-API change would cross.
 
-    Same shape as the librosa cap above: an upper bound that encodes a
-    compatibility fact, removed only together with the code that depends on it.
-    The behavioural half is ``tests/test_ocr_engine.py``, which drives the real
-    engine — this one keeps the boundary from drifting back out of the metadata
-    where nothing local would notice.
+    Both halves are cheap to assert and hard to notice by hand: the verified
+    minors must stay installable (CI installs exactly them — see the matrix job)
+    and the next major must not slide in unannounced.
     """
     specs = _pyproject()["project"]["optional-dependencies"]["ocr"]
     req = Requirement(next(spec for spec in specs if _dist_name(spec) == "rapidocr"))
 
-    assert req.specifier.contains("3.8.4"), (
-        "the RapidOCR release yt-ocr is written against must stay installable"
-    )
-    assert not req.specifier.contains("3.9.0"), (
-        "rapidocr 3.9 changed the params schema yt_tools/ocr.py builds — lift this "
-        "cap only in the same change that adapts the code"
+    for verified in ("3.8.4", "3.9.2"):
+        assert req.specifier.contains(verified), (
+            f"rapidocr {verified} is verified by tests/test_ocr_engine.py in CI and "
+            "must stay installable"
+        )
+    assert not req.specifier.contains("4.0.0"), (
+        "a rapidocr major could change the params API again — widen only with a "
+        "green engine test against that version"
     )
 
 
@@ -246,11 +247,12 @@ def test_ocr_inject_hint_carries_the_same_bound_as_the_extra():
     """Two install routes, one bound — the `pipx inject` hint has no metadata to inherit.
 
     ``yt-ocr`` refusing with `pipx inject yt-tools-cli rapidocr onnxruntime` told
-    the user to install exactly the pair the extra caps below 3.9 — an inject
-    resolves from PyPI directly, so the refusal message would have reproduced
-    [[issue:77]] on a machine that followed it to the letter. ``doctor``'s
-    ``next_step`` and the README print the same line, so the assertion is on the
-    constant all three read from, not on one caller's wording.
+    the user to install the pair by name — an inject resolves from PyPI directly,
+    so the refusal message never inherited the extra's bound and, in the 0.24.x
+    window, would have reproduced [[issue:77]] on a machine that followed it to
+    the letter. ``doctor``'s ``next_step`` and the README print the same line, so
+    the assertion is on the constant all three read from, not on one caller's
+    wording.
     """
     from yt_tools import extras  # noqa: PLC0415 — local import keeps the packaging tests import-light
 
@@ -268,7 +270,7 @@ def test_ocr_inject_hint_carries_the_same_bound_as_the_extra():
         "the [ocr] extra and the inject hint must name the same requirements — "
         "the hint is what a user pastes when the extra is missing"
     )
-    assert '"rapidocr>=3.8,<3.9"' in extras.inject_command("ocr"), (
+    assert '"rapidocr>=3.8,<4"' in extras.inject_command("ocr"), (
         "a bounded spec must be quoted: `>` and `<` are redirections in bash, cmd.exe and PowerShell"
     )
 
@@ -286,6 +288,13 @@ def test_ci_installs_the_ocr_extra_so_the_engine_test_actually_runs():
     assert 'pip install -e ".[full,ocr,test]"' in workflow, (
         "the pytest job must install [ocr], or tests/test_ocr_engine.py skips there too"
     )
+    # ...and the matrix legs are where the *unselected* minor gets exercised: the
+    # pytest job resolves whichever rapidocr the bound allows today.
+    for verified in ("3.8.4", "3.9.2"):
+        assert f'"{verified}"' in workflow, (
+            f"the ocr-engine-matrix job must cover rapidocr {verified} — a bound "
+            "claiming a version nothing runs against is how issue:77 shipped"
+        )
 
 
 @pytest.mark.parametrize("extra", ["audio", "full"])

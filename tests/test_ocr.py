@@ -88,6 +88,11 @@ class _FakeLangRec:
 
 class _FakeOCRVersion:
     PPOCRV5 = "ocrver::v5"
+    PPOCRV4 = "ocrver::v4"
+
+
+class _FakeModelType:
+    MOBILE = "model::mobile"
 
 
 def test_build_params_en_maps_to_LangRec_EN():
@@ -129,6 +134,68 @@ def test_build_params_forces_pp_ocrv5_across_components():
 def test_build_params_multi_still_forces_v5():
     """``multi`` skips lang_type override but must still pin v5."""
     p = _build_params("multi", _FakeLangRec, _FakeOCRVersion)
+    assert p["Rec.ocr_version"] == "ocrver::v5"
+    assert "Rec.lang_type" not in p
+
+
+# task:2833 — the model_type half of the PP-OCRv5 pin. Pinning only the version
+# left model_type at rapidocr's default, which is a *version-dependent* value:
+# 3.8 defaults every component to PP-OCRv4 + "mobile" (valid for v5), 3.9 moved
+# Det/Rec to PP-OCRv6 + "small" — and PP-OCRv5 ships mobile/server only, so
+# "PP-OCRv5 … small" resolves to nothing and construction raises
+# "error: Invalid OCR configuration" ([[issue:77]]). Naming the model type makes
+# the config independent of whatever default the installed release ships.
+def test_build_params_pins_the_model_type_alongside_the_version():
+    p = _build_params("en", _FakeLangRec, _FakeOCRVersion, _FakeModelType)
+    assert p["Det.model_type"] == "model::mobile"
+    assert p["Cls.model_type"] == "model::mobile"
+    assert p["Rec.model_type"] == "model::mobile"
+
+
+def test_build_params_multi_also_pins_the_model_type():
+    p = _build_params("multi", _FakeLangRec, _FakeOCRVersion, _FakeModelType)
+    assert p["Rec.model_type"] == "model::mobile"
+    assert "Rec.lang_type" not in p
+
+
+def test_build_params_without_a_modeltype_enum_stays_silent_about_it():
+    """The version/model pins travel together: no enum, no keys.
+
+    ``_build_params`` is called with the rapidocr enums only from
+    ``_load_engine``; the older signature (no ``ModelType``) must not
+    silently emit a half pin — a config with ``model_type`` but no
+    ``ocr_version`` (or the reverse) is exactly the drift this pins against.
+    """
+    p = _build_params("en", _FakeLangRec, _FakeOCRVersion)
+    assert not [k for k in p if "model_type" in k] or p["Det.ocr_version"] == "ocrver::v5"
+
+
+# task:2833 — PP-OCRv5 ships twelve recognizers and Japanese is not one of them
+# (its registry entry is v4-only, identically in 3.8.x and 3.9.x). Asking for
+# v5 + japan resolves to nothing; before this pin the v4 model was found by the
+# library's lenient fallback, and once model_type is named — as it must be, so
+# the config stops depending on the installed release's defaults — that fallback
+# is skipped and construction raises. Pinning the recognizer per language makes
+# `--language ja` work by design rather than by luck.
+def test_build_params_ja_uses_the_v4_recognizer():
+    p = _build_params("ja", _FakeLangRec, _FakeOCRVersion, _FakeModelType)
+    assert p["Rec.lang_type"] == "lang::japan"
+    assert p["Rec.ocr_version"] == "ocrver::v4"
+    # ...while detection and classification stay on v5: they are
+    # language-agnostic (one `ch` model each) in the v5 family.
+    assert p["Det.ocr_version"] == "ocrver::v5"
+    assert p["Cls.ocr_version"] == "ocrver::v5"
+
+
+def test_build_params_languages_with_a_v5_recognizer_stay_on_v5():
+    for lang in ("en", "ru", "zh"):
+        p = _build_params(lang, _FakeLangRec, _FakeOCRVersion, _FakeModelType)
+        assert p["Rec.ocr_version"] == "ocrver::v5", lang
+
+
+def test_build_params_multi_keeps_the_v5_ch_recognizer():
+    """`multi` means RapidOCR's default recognizer — which for v5 is `ch`."""
+    p = _build_params("multi", _FakeLangRec, _FakeOCRVersion, _FakeModelType)
     assert p["Rec.ocr_version"] == "ocrver::v5"
     assert "Rec.lang_type" not in p
 
@@ -180,6 +247,21 @@ def test_render_zero_frames_still_emits_header():
     assert "frames: 0" in md
 
 
+# task:2833 — the header line is the only trace of *what* read the frames, so it
+# must not claim PP-OCRv5 for a language that has no v5 recognizer (Japanese is
+# read by the v4 recognizer, see _LANGUAGE_REC_VERSION).
+def test_render_names_the_v4_recognizer_for_japanese():
+    md = ocr_to_markdown(_VID, [(23, ["こんにちは"])], language="ja")
+    assert "PP-OCRv4" in md, "the ja header must name the recognizer that actually ran"
+    assert "language: ja" in md
+
+
+def test_render_keeps_the_plain_v5_label_for_languages_that_have_one():
+    md = ocr_to_markdown(_VID, [(23, ["hello"])], language="en")
+    assert "engine: RapidOCR (PP-OCRv5)" in md
+    assert "PP-OCRv4" not in md
+
+
 # --- _load_engine: friendly missing-extra hint -------------------------------
 
 
@@ -195,7 +277,7 @@ def test_load_engine_friendly_hint_when_rapidocr_missing(monkeypatch):
     with pytest.raises(OcrError) as exc_info:
         ocr_mod._load_engine("en")
     msg = str(exc_info.value)
-    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"' in msg
+    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"' in msg
     assert "pip install 'yt-tools-cli[ocr]'" in msg
 
 
@@ -294,7 +376,7 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
     def _raise(_lang):
         raise OcrError(
             "yt-ocr requires the [ocr] extra:\n"
-            '  pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"\n'
+            '  pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"\n'
             "  # or\n"
             "  pip install 'yt-tools-cli[ocr]'"
         )
@@ -304,7 +386,7 @@ def test_cli_missing_extra_prints_friendly_hint(tmp_path, monkeypatch, capsys):
 
     assert rc == 1
     err = capsys.readouterr().err
-    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"' in err
+    assert 'pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"' in err
     assert "pip install 'yt-tools-cli[ocr]'" in err
 
 

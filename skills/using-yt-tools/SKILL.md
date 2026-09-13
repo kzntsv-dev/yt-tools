@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.24.2
+version: 0.25.0
 description: Seven YouTube flows, one skill. Discovery `yt-search` ("find a video about X", «найди видео про X», «поищи туториал»). Summary / exploration `yt-transcript` — [mm:ss] anchors, then pick moments and run `yt-frames` ("what's in this video", «о чём видео»). Targeted frames directly by timestamp ("show frame at N", «покажи кадр на N»). Audio FFT `yt-listen` — BPM, key, chords, structure ("what's the BPM", «спектрограмма», «тональность видео»). Metadata `yt-meta` — description, chapters, most-replayed ("video description", «что в описании», «покажи главы»). Comments `yt-comments` ("top comments", «комменты под роликом»). OCR over cached frames `yt-ocr` — silent-with-text fallback ("read text from frames", "captions burned in", «прочти текст с кадров»). Any youtube.com URL. Install once per machine with pipx (`pipx install 'yt-tools-cli[full]'`); `yt-tools doctor` is the read-only preflight that names what is missing. YouTube-only — Vimeo / Twitch / local files need other tools.
 ---
 
@@ -108,7 +108,7 @@ Seven distinct flows, picked by user intent:
   interesting timestamps if you need the original frames.
 - **Requires the `[ocr]` extra** — `rapidocr` + `onnxruntime`, **not** part of
   `[full]`. If missing on the running yt-tools install, `yt-ocr` exits nonzero
-  with both install hints (`pipx inject yt-tools-cli "rapidocr>=3.8,<3.9"
+  with both install hints (`pipx inject yt-tools-cli "rapidocr>=3.8,<4"
   "onnxruntime>=1.18"` / `pip install 'yt-tools-cli[ocr]'`). The plugin's
   SessionStart hook installs `[full]` (core + `[frames]` + `[audio]`, plus a
   best-effort `bpm-detector` inject) only, **not** `[ocr]` — first run of Flow F
@@ -152,10 +152,10 @@ pipx install "yt-tools-cli[full]==0.24.2"
 # OCR (explicit extra, ~10 MB model fetched on first run). Naming it in the
 # install lets pip resolve it from the metadata, bounds included:
 pipx install "yt-tools-cli[full,ocr]"
-# already installed? widen in place — `rapidocr` is capped below 3.9, where the
-# PP-OCRv5 params yt-ocr builds no longer resolve (quote the specs: `>`/`<` are
-# redirections in bash, cmd.exe and PowerShell):
-pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
+# already installed? widen in place — the bound is `>=3.8,<4` (a major is where a
+# params-API change would land; quote the specs — `>`/`<` are redirections in
+# bash, cmd.exe and PowerShell):
+pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"
 ```
 
 From a checkout instead of PyPI (the plugin path, or tracking `master`):
@@ -305,7 +305,7 @@ prepend is needed — invoke normally.
 | C — audio-analysis | YouTube URL + timestamps (same formats as B) | `--duration 30s` (default 30s — the lower bound for beat-tracking); `--mode interval --interval 60s` (bulk sampling); `--no-wav` / `--no-spectrogram` (both default ON); `--linear` (STFT instead of mel); `--chroma` (bonus chromagram PNG); `--sample-rate 22050`; `--no-cache-source`; `--out DIR` |
 | D — metadata | YouTube URL or bare 11-char video id | `--out PATH` |
 | E — comments | YouTube URL or bare 11-char video id | `--max N` (default 50; higher = slower); `--sort {top,new}` (default top); `--out PATH` |
-| F — OCR | YouTube URL or bare 11-char video id (frames in cache, or pass `--timestamps`) | `--timestamps T1,T2,…` (extract via internal yt-frames then OCR); `--language {en,ru,ja,zh,multi}` (default `en`); `--out PATH` |
+| F — OCR | YouTube URL or bare 11-char video id (frames in cache, or pass `--timestamps`) | `--timestamps T1,T2,…` (extract via internal yt-frames then OCR); `--language {en,ru,ja,zh,multi}` (default `en`; `ja` is read by the PP-OCRv4 recognizer — no PP-OCRv5 Japanese model exists); `--out PATH` |
 
 **Frame budget.** Auto-selected frames (`--mode scene`, `--mode interval`, and
 `yt-watch`) are capped at **100 per call** and evenly thinned with the first and
@@ -532,7 +532,7 @@ All failures abort cleanly; never leave a half-finished state.
 | `Subtitles disabled` / `no captions in the requested language(s)` / `the transcript API returned nothing usable (ParseError: …)` from `yt-transcript` | Captions are absent (channel-disabled, wrong `--lang`, or YouTube answered with an empty body — the last one used to surface as a bare `no element found: line 1, column 0`). The message names the reason and both fallbacks. | Fatal for Flow A — tell the user the reason, and switch: Flow C (`yt-listen`) for audio, Flow F (`yt-ocr`) for text burned into the frames. Try another `--lang` first only when the reason says the *requested language* is missing. `yt-watch` on the same video does **not** fail — it writes a frames-only `watch.md` with the reason in its header, so read the frames and say that the text layer is absent. |
 | Flow B/D — `yt-frames --mode scene requires the [frames] extra` / `yt-watch requires the [frames] extra` | `scenedetect` / `opencv-python` not in the active pipx venv | Exit code 1, nothing was downloaded. Tell the user the command the CLI printed (`pipx inject yt-tools-cli scenedetect opencv-python` or `pip install 'yt-tools-cli[frames]'`). Fallbacks that need no install: Flow D with an explicit `--timestamps` list, or `--mode interval` (which still runs and announces on stderr that near-duplicate dedup was skipped). |
 | Flow C — `yt-listen requires the [audio] extra` | `librosa` / `matplotlib` not in the active pipx venv | Exit code 1. Same shape: print the command the CLI named. Until it is installed, Flow A (transcript) and Flow F (`yt-ocr`) are the alternatives for this video. |
-| Flow F — `yt-ocr requires the [ocr] extra` | `rapidocr` / `onnxruntime` not in the active pipx venv | Run the inject command the CLI printed: `pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"` (or `pip install 'yt-tools-cli[ocr]'` in non-pipx setups). The bound is load-bearing: an inject resolves from PyPI directly, and 3.9 fails at engine construction. The plugin's SessionStart hook installs `[full]`, not `[ocr]`, so first run typically needs this. |
+| Flow F — `yt-ocr requires the [ocr] extra` | `rapidocr` / `onnxruntime` not in the active pipx venv | Run the inject command the CLI printed: `pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"` (or `pip install 'yt-tools-cli[ocr]'` in non-pipx setups). The bound is load-bearing: an inject resolves from PyPI directly and never inherits the extra's metadata (`>`/`<` need the quotes). The plugin's SessionStart hook installs `[full]`, not `[ocr]`, so first run typically needs this. |
 | Flow F — `no cached frames in …/frames` | Batch-on-cache mode but `yt-frames` wasn't run yet (or wrote elsewhere) | Either run `yt-frames URL --mode scene --scene-threshold 12` (or `--mode interval --interval 15s`) first, or re-invoke `yt-ocr URL --timestamps T1,T2,…` to let it do extraction inline. |
 | Flow F — RapidOCR model download fails (offline / firewall) | First-run lazy-download of PP-OCRv5 ONNX weights blocked | Print the captured error; let the user re-run with network access. Don't retry. |
 | User passed a non-YouTube URL (Vimeo / Twitch / local mp4) | Out of scope | Stop; say the skill is YouTube-only. |
@@ -647,7 +647,9 @@ instead of printing a traceback.
   `zh` / `multi`. If the user doesn't name a language, default to `en`;
   if they say "русский / Japanese / Chinese", pass the matching code
   explicitly. (`multi` is the PP-OCR multilingual model — slower, wider
-  CJK + Latin coverage; use it when the video mixes scripts.)
+  CJK + Latin coverage; use it when the video mixes scripts. `en`/`ru`/
+  `zh`/`multi` read with a PP-OCRv5 recognizer and `ja` with the v4 one —
+  the header line of `ocr.md` names whichever ran.)
 - **Don't try to OCR arbitrary `.jpg` files with `yt-ocr`.** This skill
   and CLI live in the YouTube domain: `yt-ocr` only accepts a YouTube
   URL / video-id and reads frames from `./yt-cache/<vid>/frames/`. For

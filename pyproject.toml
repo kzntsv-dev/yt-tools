@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools-cli"
-version = "0.24.2"
+version = "0.25.0"
 description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), and OCR over cached frames for silent-with-text videos."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -79,18 +79,17 @@ full = [
     "matplotlib>=3.8",
 ]
 ocr = [
-    # Capped below 3.9 on purpose ([[task:2831]], [[issue:77]]). 3.9 moved the
-    # bundled defaults to ``ocr_version=PP-OCRv6, model_type=small``; ocr.py
-    # overrides the ocr_version to PP-OCRv5 but leaves model_type at that
-    # default, and PP-OCRv5 ships ``mobile``/``server`` only — so "PP-OCRv5 small"
-    # resolves to nothing (the lenient prefix fallback finds no candidate either)
-    # and RapidOCR raises ``error: Invalid OCR configuration`` at construction.
-    # A clean ``pipx install "yt-tools-cli[ocr]"`` therefore installed 3.9.2 and
-    # every ``yt-ocr`` run died. Lift the cap only in the change that teaches
-    # ocr.py the 3.9 model matrix (pin ``model_type`` explicitly, then re-check
-    # every ``--language``) — tests/test_ocr_engine.py drives the real engine and
-    # fails if the pin comes off alone.
-    "rapidocr>=3.8,<3.9",
+    # Pinned to the 3.x params API ([[task:2833]]). Within it, `ocr.py` names
+    # *everything* explicitly — `Det/Cls/Rec.ocr_version` and the matching
+    # `model_type`, plus the recognizer version per language — so the config no
+    # longer depends on whatever defaults the installed release ships. That was
+    # the 0.24.2 bug ([[issue:77]]): 3.8 defaulted to PP-OCRv4+mobile, 3.9 moved
+    # Det/Rec to PP-OCRv6+small, and PP-OCRv5 has no `small`, so a version-only
+    # pin asked for a model that does not exist and construction raised
+    # `error: Invalid OCR configuration`. Verified against 3.8.4 and 3.9.2 for
+    # every `--language` (CI matrix: .github/workflows/ci.yml); the major bound
+    # is what a params-API change would break, so it stays.
+    "rapidocr>=3.8,<4",
     "onnxruntime>=1.18",
 ]
 test = ["pytest>=7.0"]

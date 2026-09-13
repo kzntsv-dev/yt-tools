@@ -85,6 +85,25 @@ def engine():
     return ocr_mod._load_engine("en")
 
 
+@pytest.mark.parametrize("language", ocr_mod.SUPPORTED_LANGUAGES)
+def test_every_supported_language_constructs_an_engine(language):
+    """Every `--language` value must resolve to a model that exists (task:2833).
+
+    Language → model is not a free mapping: the recognizer is per language, and
+    PP-OCRv5 ships twelve of them with **no Japanese** among them — `--language
+    ja` asked for a model that does not exist and died at construction, on 3.8.4
+    as well as 3.9.2, while every test here (and the whole suite) stayed green
+    because only `en` was ever built. This is the guard for that class: it
+    exercises the real registry for every value the CLI advertises.
+
+    Construction, not OCR: what breaks is model resolution, and a Japanese
+    recognizer reading Latin text proves nothing. It does download a recognizer
+    per language (~8-16 MB, once per runner) — the same lazy fetch the first real
+    run pays, which is why this module already needs the network.
+    """
+    assert ocr_mod._load_engine(language) is not None
+
+
 def test_load_engine_constructs_the_declared_params(engine):
     """The 3.9.x failure mode: RapidOCR refuses the 3.8.x-shaped ``params`` dict."""
     assert engine is not None

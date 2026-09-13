@@ -44,7 +44,7 @@ EXTRA_MODULES: dict[str, tuple[str, ...]] = {
 EXTRA_PACKAGES: dict[str, tuple[str, ...]] = {
     "frames": ("scenedetect", "opencv-python"),
     "audio": ("librosa", "matplotlib"),
-    "ocr": ("rapidocr>=3.8,<3.9", "onnxruntime>=1.18"),
+    "ocr": ("rapidocr>=3.8,<4", "onnxruntime>=1.18"),
 }
 
 #: The enrichment that cannot be a package extra. ``bpm-detector`` gives
@@ -105,7 +105,7 @@ def inject_command_for(extra_names: list[str] | tuple[str, ...]) -> str:
     """One command adding several extras — what ``doctor``'s ``next_step`` prints.
 
     Every spec is double-quoted: an injected spec can carry version bounds
-    (``rapidocr>=3.8,<3.9``), and an unquoted ``>``/``<`` is a redirection in
+    (``rapidocr>=3.8,<4``), and an unquoted ``>``/``<`` is a redirection in
     bash, cmd.exe and PowerShell alike — the printed command has to be
     pasteable, since being pasteable is the whole point of it.
     """

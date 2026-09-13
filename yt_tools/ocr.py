@@ -30,11 +30,34 @@ from yt_tools.core import (
 from yt_tools.extras import format_missing_extra
 
 ENGINE_LABEL = "RapidOCR (PP-OCRv5)"
+#: Languages whose recognizer is not PP-OCRv5 — the label has to name what ran.
+_ENGINE_LABEL_JA = "RapidOCR (PP-OCRv5 det/cls + PP-OCRv4 ja rec)"
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ("en", "ru", "ja", "zh", "multi")
 
 _FRAME_RE = re.compile(r"^frame_(\d+)(?:_(\d+))?\.jpg$")
 _NO_TEXT_MARKER = "_(no text detected)_"
+
+#: Language → (``LangRec`` member name, recognizer ``OCRVersion`` member name).
+#:
+#: Detection and classification are language-agnostic in the v5 family (one `ch`
+#: model each), but the recognizer is per language — and PP-OCRv5 ships twelve of
+#: them (arabic, ch, cyrillic, devanagari, el, en, eslav, korean, latin, ta, te,
+#: th), **Japanese not among them**: `japan_PP-OCRv4_rec_mobile` is the only
+#: Japanese recognizer in both 3.8.x and 3.9.x registries. So the version is
+#: named per language instead of forced globally. Two failure modes meet here, and
+#: both shipped: with `Rec.ocr_version=PP-OCRv5` + `japan` the library's lenient
+#: fallback used to pick the v4 model (working by luck), and once `model_type` is
+#: named — which it must be, or the config depends on the installed release's
+#: defaults ([[issue:77]]) — the fallback is skipped and construction raises
+#: `Invalid OCR configuration`. Verified by building the engine for every
+#: ``SUPPORTED_LANGUAGES`` entry on rapidocr 3.8.4 and 3.9.2 ([[task:2833]]).
+_LANGUAGE_REC_VERSION: dict[str, tuple[str, str]] = {
+    "en": ("EN", "PPOCRV5"),
+    "ru": ("CYRILLIC", "PPOCRV5"),
+    "ja": ("JAPAN", "PPOCRV4"),
+    "zh": ("CH", "PPOCRV5"),
+}
 
 
 class OcrError(RuntimeError):
@@ -82,36 +105,58 @@ def discover_frames(frames_dir: Path) -> list[tuple[int, Path]]:
 # --- engine factory (lazy import) -------------------------------------------
 
 
-def _build_params(language: str, langrec_enum, ocrversion_enum=None) -> dict:
+def _build_params(
+    language: str,
+    langrec_enum,
+    ocrversion_enum=None,
+    modeltype_enum=None,
+) -> dict:
     """Map user-facing language → RapidOCR params dict.
 
     Forces ``PP-OCRv5`` across Det / Cls / Rec when ``ocrversion_enum`` is
     supplied (RapidOCR 3.8.x defaults the bundled-model dance to v4 — we want
-    v5 per design spec). For ``multi``, returns params **without** a
-    ``Rec.lang_type`` override so RapidOCR picks its default multilingual
-    model (Chinese+English).
+    v5 per design spec) **and names the model type** (``mobile``) alongside it,
+    when ``modeltype_enum`` is supplied.
+
+    Both halves are needed, and that is the whole lesson of [[issue:77]]: the
+    model type is a *version-dependent default*, not a constant. 3.8.x defaults
+    every component to ``PP-OCRv4 + mobile`` — which happens to be valid for v5
+    too; 3.9.x moved Det/Rec to ``PP-OCRv6 + small``, and the v5 family ships
+    ``mobile``/``server`` only, so a version-only pin asked for "PP-OCRv5 … small"
+    and RapidOCR refused the config at construction. Pinning the pair makes the
+    params mean the same thing on every supported release.
+
+    For ``multi``, returns params **without** a ``Rec.lang_type`` override so
+    RapidOCR picks its default multilingual model (Chinese+English).
     """
     params: dict = {}
     if ocrversion_enum is not None:
         v5 = ocrversion_enum.PPOCRV5
         params["Det.ocr_version"] = v5
         params["Cls.ocr_version"] = v5
+        # Overridden per language below: not every supported language has a v5
+        # recognizer (see _LANGUAGE_REC_VERSION).
         params["Rec.ocr_version"] = v5
+    if modeltype_enum is not None:
+        # `mobile` (not `server`): the small/fast bundle, matching the CPU-only
+        # onnxruntime install the extra brings, and the one key the v5 family
+        # has for every supported language/component.
+        mobile = modeltype_enum.MOBILE
+        params["Det.model_type"] = mobile
+        params["Cls.model_type"] = mobile
+        params["Rec.model_type"] = mobile
     if language == "multi":
         return params
-    mapping = {
-        "en": getattr(langrec_enum, "EN", None),
-        "ru": getattr(langrec_enum, "CYRILLIC", None),
-        "ja": getattr(langrec_enum, "JAPAN", None),
-        "zh": getattr(langrec_enum, "CH", None),
-    }
-    lang_type = mapping.get(language)
+    member, rec_version = _LANGUAGE_REC_VERSION.get(language, (None, None))
+    lang_type = getattr(langrec_enum, member, None) if member else None
     if lang_type is None:
         raise OcrError(
             f"unknown language: {language!r} "
             f"(supported: {', '.join(SUPPORTED_LANGUAGES)})"
         )
     params["Rec.lang_type"] = lang_type
+    if ocrversion_enum is not None:
+        params["Rec.ocr_version"] = getattr(ocrversion_enum, rec_version)
     return params
 
 
@@ -123,12 +168,12 @@ def _load_engine(language: str):
     without it.
     """
     try:
-        from rapidocr import LangRec, OCRVersion, RapidOCR  # noqa: PLC0415
+        from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR  # noqa: PLC0415
         import onnxruntime  # noqa: F401, PLC0415 — the [ocr] extra ships both; a half-installed pair must refuse here, not crash later
     except ImportError as e:
         # Same wording as every other CLI (D4) — the message lives in one place.
         raise OcrError(format_missing_extra("yt-ocr", "ocr")) from e
-    params = _build_params(language, LangRec, OCRVersion)
+    params = _build_params(language, LangRec, OCRVersion, ModelType)
     return RapidOCR(params=params)
 
 
@@ -153,6 +198,18 @@ def _ocr_one(engine, image_path: Path) -> list[str]:
 # --- pure render -------------------------------------------------------------
 
 
+def engine_label(language: str) -> str:
+    """Header label naming the recognizer that actually runs for ``language``.
+
+    Japanese is the one supported language with no PP-OCRv5 recognizer, so a
+    blanket "PP-OCRv5" line would be a claim the artefact cannot back — and the
+    header is the only place a reader (or an agent comparing two runs) can see
+    which models produced the text.
+    """
+    _, rec_version = _LANGUAGE_REC_VERSION.get(language, (None, "PPOCRV5"))
+    return _ENGINE_LABEL_JA if rec_version == "PPOCRV4" else ENGINE_LABEL
+
+
 def ocr_to_markdown(
     video_id: str,
     frames: list[tuple[int, list[str]]],
@@ -166,7 +223,7 @@ def ocr_to_markdown(
         f"# OCR — {video_id}",
         "",
         (
-            f"generated: {generated} · engine: {ENGINE_LABEL}"
+            f"generated: {generated} · engine: {engine_label(language)}"
             f" · language: {language} · frames: {len(frames)}"
         ),
         "",
@@ -259,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_LANGUAGE,
         help=(
             f"OCR language (default: {DEFAULT_LANGUAGE}). "
-            "multi = PP-OCR multilingual (Chinese+English)."
+            "multi = PP-OCR multilingual (Chinese+English). "
+            "ja uses the PP-OCRv4 recognizer: no PP-OCRv5 Japanese model exists."
         ),
     )
     args = parser.parse_args(argv)

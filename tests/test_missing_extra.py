@@ -82,7 +82,7 @@ def test_audio_refusal_wording_is_exact():
 def test_ocr_refusal_wording_is_exact():
     assert extras.format_missing_extra("yt-ocr", "ocr") == (
         "yt-ocr requires the [ocr] extra:\n"
-        '  pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"\n'
+        '  pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"\n'
         "  # or\n"
         "  pip install 'yt-tools-cli[ocr]'"
     )

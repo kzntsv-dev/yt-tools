@@ -113,7 +113,7 @@ pipx install "yt-tools-cli[full,ocr]"
 # redirections in bash, cmd.exe and PowerShell. `rapidocr` is capped below 3.9
 # because 3.9 moved the bundled defaults to PP-OCRv6, where the PP-OCRv5 params
 # yt-ocr builds no longer resolve (see the OCR section).
-pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
+pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"
 ```
 
 `uv` users: `uv tool install "yt-tools-cli[full]"`, or for a one-off run
@@ -150,7 +150,7 @@ matplotlib. Heavier stacks are opt-in, per flow.
 | core (no extras) | `youtube-transcript-api`, `yt-dlp` | `yt-transcript`, `yt-meta`, `yt-comments`, `yt-search`, `yt-tools cache`; `yt-frames --timestamps` / `--mode interval` (without near-duplicate dedup) |
 | `[frames]` | `scenedetect[opencv]` (OpenCV) | `yt-frames --mode scene`, `yt-watch`, and dedup in the other frame modes |
 | `[audio]` | `librosa`, `matplotlib` | `yt-listen` (spectral features, spectrogram, BPM/key) |
-| `[ocr]` | `rapidocr>=3.8,<3.9`, `onnxruntime` | `yt-ocr` (PP-OCRv5; ONNX model downloaded on first run) |
+| `[ocr]` | `rapidocr>=3.8,<4`, `onnxruntime` | `yt-ocr` (PP-OCRv5; ONNX model downloaded on first run) |
 | `[full]` | core + `[frames]` + `[audio]` | the plugin default: every flow above **except `yt-ocr`** |
 
 `[full]` is a *flow* default, not "everything". Two things stay outside it on
@@ -420,8 +420,9 @@ When `yt-transcript` returns 0 bytes (or near-nothing) and the content
 lives entirely in burned-in overlay text — tutorial channels with
 schematic labels, chord matrices over dimmed B-roll, parameter
 walkthroughs without voice-over — fall back to OCR over cached frames.
-Engine is [RapidOCR](https://github.com/RapidAI/RapidOCR) (PP-OCRv5
-models via `onnxruntime`).
+Engine is [RapidOCR](https://github.com/RapidAI/RapidOCR) (PP-OCRv5 models via
+`onnxruntime`; Japanese is read by the PP-OCRv4 recognizer, the only one that
+ships for it — the header line of `ocr.md` names whichever ran).
 
 ```bash
 # 1) extract frames first (lower scene threshold catches overlay fades
@@ -445,7 +446,7 @@ yt-ocr URL --timestamps 1:30,2:45,5:10
 
 # Non-English overlays:
 yt-ocr URL --language ru        # Cyrillic
-yt-ocr URL --language ja        # Japanese
+yt-ocr URL --language ja        # Japanese (PP-OCRv4 recognizer — no v5 model exists)
 yt-ocr URL --language zh        # Chinese (simplified)
 yt-ocr URL --language multi     # PP-OCR multilingual (Chinese+English)
 ```
@@ -459,7 +460,7 @@ was checked vs. silently omitted).
 > core install — and **not** in `[full]` either. If `yt-ocr` exits with the
 > missing-extra hint, run:
 > ```bash
-> pipx inject yt-tools-cli "rapidocr>=3.8,<3.9" "onnxruntime>=1.18"
+> pipx inject yt-tools-cli "rapidocr>=3.8,<4" "onnxruntime>=1.18"
 > # or for non-pipx setups:
 > pip install 'yt-tools-cli[ocr]'
 > ```
@@ -468,13 +469,14 @@ was checked vs. silently omitted).
 > they land in the installed package's own `rapidocr/models/` directory, not in
 > `~/.cache/` — verified on a clean venv.
 >
-> The `rapidocr` bound is not decoration: 3.9 moved the bundled defaults to
-> PP-OCRv6 with `model_type=small`, and PP-OCRv5 ships `mobile`/`server` only —
-> the v5 detector the CLI asks for resolves to nothing there, so a 3.9 install
-> fails at engine construction with `error: Invalid OCR configuration`. The
-> `[ocr]` extra carries the bound, and so does the `pipx inject` line above: an
-> inject resolves from PyPI directly and would otherwise install the version the
-> extra exists to exclude.
+> The `rapidocr` bound is `>=3.8,<4`: the CLI names every model version *and*
+> model type explicitly, so the config means the same on each 3.x release — but a
+> major could change the params API, which is what bit 0.24.x (3.9 defaulted to
+> PP-OCRv6 + `small`, where the PP-OCRv5 detector the CLI asks for does not
+> exist). Both verified minors (3.8.4, 3.9.2) are exercised by the engine test in
+> CI. The `[ocr]` extra carries the bound, and so does the `pipx inject` line
+> above: an inject resolves from PyPI directly and never inherits the extra's
+> metadata.
 
 ### Cache hygiene
 
