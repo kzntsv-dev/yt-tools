@@ -388,3 +388,25 @@ def test_cli_out_flag_writes_to_explicit_path(tmp_path, monkeypatch):
     assert explicit.exists()
     # Default path NOT written
     assert not (tmp_path / "yt-cache" / _VID / "ocr.md").exists()
+
+
+def test_parse_frame_seconds_ignores_the_subsecond_part():
+    # task:2782: миллисекунды в имени — часть уникальности, секунда та же.
+    assert _parse_frame_seconds("frame_0023_100.jpg") == 23
+    assert _parse_frame_seconds("frame_1245_012.jpg") == 12 * 60 + 45
+
+
+def test_discover_frames_keeps_every_frame_of_the_same_second(tmp_path):
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    for name in ("frame_0145.jpg", "frame_0023_900.jpg", "frame_0023.jpg", "frame_0023_100.jpg"):
+        (frames / name).write_bytes(b"x")
+    out = discover_frames(frames)
+    assert [secs for secs, _ in out] == [23, 23, 23, 105]
+    # порядок внутри секунды детерминирован (по имени, не по порядку файловой системы)
+    assert [p.name for _, p in out] == [
+        "frame_0023.jpg",
+        "frame_0023_100.jpg",
+        "frame_0023_900.jpg",
+        "frame_0145.jpg",
+    ]

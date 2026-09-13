@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools"
-version = "0.7.0"
+version = "0.22.0"
 description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), and OCR over cached frames for silent-with-text videos."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -40,16 +40,35 @@ classifiers = [
     "Topic :: Multimedia :: Video",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+# Light flows only: transcript, metadata, comments, search, cache. Everything
+# else is an extra — a plain `pip install .` must not pull opencv/librosa/
+# matplotlib ([[requirements:46]] D1).
 dependencies = [
     "youtube-transcript-api>=1.0.0",
     "yt-dlp>=2025.0.0",
-    "scenedetect[opencv]>=0.6.4",
-    "librosa>=0.11.0",
-    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]
+# yt-frames (--mode scene) and yt-watch scene detection.
+frames = [
+    "scenedetect[opencv]>=0.6.4",
+]
+# yt-listen — spectral features, spectrogram rendering, librosa-only fallback.
+# Capped below 1.0: bpm-detector 1.1.0 calls ``librosa.beat.tempo``, removed in
+# librosa 1.0 — an uncapped range resolves to a combination where yt-listen
+# raises inside the third-party dep. Drop the cap once bpm-detector supports 1.x.
+audio = [
+    "librosa>=0.11.0,<1.0",
+    "matplotlib>=3.8",
+]
+# The agent default (plugin SessionStart hook) — same dist set as the pre-0.14
+# default install (core + frames + audio + bpm-detector), so the agent path pays
+# nothing new. NOT [ocr]: the ONNX model is a ~10 MB lazy download and is always
+# an explicit install (D3).
 full = [
+    "scenedetect[opencv]>=0.6.4",
+    "librosa>=0.11.0,<1.0",
+    "matplotlib>=3.8",
     "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0",
 ]
 ocr = [

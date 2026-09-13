@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 from dataclasses import dataclass
@@ -14,17 +15,43 @@ class CacheEntry:
     path: Path
     size_bytes: int
     mtime: float
+    #: False when part of the tree could not be walked (permission wall, vanished
+    #: file): ``size_bytes`` is then a lower bound, not the size. Diagnosticians
+    #: are expected to say so instead of reporting a confident number.
+    complete: bool = True
 
 
-def _dir_size(path: Path) -> int:
+def cache_root(base: Path | None = None) -> Path:
+    """The cache root every flow writes to: ``<base or cwd>/yt-cache``."""
+    return (base or Path.cwd()) / "yt-cache"
+
+
+def _dir_size(path: Path) -> tuple[int, bool]:
+    """Total bytes under ``path``, plus whether the whole tree could be walked.
+
+    Best-effort by contract: an unreadable subtree yields a partial size and
+    ``False`` instead of a confident number, because the caller is a *diagnostic*
+    that exists to explain exactly that broken environment ([[requirements:46]] D5,
+    [[task:2797]] F1). ``os.walk`` surfaces an unscannable directory through
+    ``onerror`` and carries on; ``Path.rglob`` swallows the same
+    ``PermissionError`` inside pathlib's glob machinery (verified on 3.10/3.12/3.13)
+    and returns a short list — the undercount would look exactly like a right
+    answer, which is the worse half of F1.
+    """
     total = 0
-    for p in path.rglob("*"):
-        if p.is_file():
+    complete = True
+
+    def _unreadable(_error: OSError) -> None:
+        nonlocal complete
+        complete = False
+
+    for dirpath, _dirnames, filenames in os.walk(path, onerror=_unreadable):
+        for name in filenames:
             try:
-                total += p.stat().st_size
+                total += os.stat(os.path.join(dirpath, name)).st_size
             except OSError:
-                pass
-    return total
+                complete = False
+    return total, complete
 
 
 def cache_list(cache_root: Path) -> list[CacheEntry]:
@@ -39,12 +66,14 @@ def cache_list(cache_root: Path) -> list[CacheEntry]:
             mtime = child.stat().st_mtime
         except OSError:
             continue
+        size_bytes, complete = _dir_size(child)
         entries.append(
             CacheEntry(
                 video_id=child.name,
                 path=child,
-                size_bytes=_dir_size(child),
+                size_bytes=size_bytes,
                 mtime=mtime,
+                complete=complete,
             )
         )
     return entries

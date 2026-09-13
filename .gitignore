@@ -1,3 +1,4 @@
+# Build and run artifacts
 __pycache__/
 *.pyc
 .venv/
@@ -6,3 +7,17 @@ __pycache__/
 build/
 dist/
 yt-cache/
+
+# Development-only paths. They exist in the private development repository and
+# must never appear here: this repository is a curated copy, not the dev tree.
+AGENTS.md
+CLAUDE.md
+.wiki/
+.tasks/
+.brainstorm/
+.archive/
+.mappa
+.mappa-manifest.json
+.pi/
+MEMORY.md
+.mcp.json

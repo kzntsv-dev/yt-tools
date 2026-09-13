@@ -27,20 +27,14 @@ from yt_tools.core import (
     format_seconds_to_mmss,
     parse_timestamp_to_seconds,
 )
+from yt_tools.extras import format_missing_extra
 
 ENGINE_LABEL = "RapidOCR (PP-OCRv5)"
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ("en", "ru", "ja", "zh", "multi")
 
-_FRAME_RE = re.compile(r"^frame_(\d+)\.jpg$")
+_FRAME_RE = re.compile(r"^frame_(\d+)(?:_(\d+))?\.jpg$")
 _NO_TEXT_MARKER = "_(no text detected)_"
-
-_MISSING_EXTRA_HINT = (
-    "yt-ocr requires the [ocr] extra:\n"
-    "  pipx inject yt-tools rapidocr onnxruntime\n"
-    "  # or\n"
-    "  pip install 'yt-tools[ocr]'"
-)
 
 
 class OcrError(RuntimeError):
@@ -53,6 +47,8 @@ class OcrError(RuntimeError):
 def _parse_frame_seconds(name: str) -> int | None:
     """Parse ``frame_<mmss>.jpg`` / ``frame_<hhmmss>.jpg`` → integer seconds.
 
+    A trailing sub-second part (``frame_0130_250.jpg`` = 90.25s, issue:74) is part of
+    the uniqueness scheme, not of the timestamp: the second it belongs to is unchanged.
     Returns None for any basename that doesn't match the contract — caller
     silently skips those files (foreign artefacts shouldn't break a batch).
     """
@@ -77,7 +73,9 @@ def discover_frames(frames_dir: Path) -> list[tuple[int, Path]]:
         if secs is None:
             continue
         out.append((secs, p))
-    out.sort(key=lambda item: item[0])
+    # Timestamp first, then name: several frames of one second differ only by their
+    # sub-second part, and glob order is filesystem-dependent (issue:74).
+    out.sort(key=lambda item: (item[0], item[1].name))
     return out
 
 
@@ -126,8 +124,10 @@ def _load_engine(language: str):
     """
     try:
         from rapidocr import LangRec, OCRVersion, RapidOCR  # noqa: PLC0415
+        import onnxruntime  # noqa: F401, PLC0415 — the [ocr] extra ships both; a half-installed pair must refuse here, not crash later
     except ImportError as e:
-        raise OcrError(_MISSING_EXTRA_HINT) from e
+        # Same wording as every other CLI (D4) — the message lives in one place.
+        raise OcrError(format_missing_extra("yt-ocr", "ocr")) from e
     params = _build_params(language, LangRec, OCRVersion)
     return RapidOCR(params=params)
 

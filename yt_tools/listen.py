@@ -42,6 +42,7 @@ from yt_tools.core import (
     interval_timestamps,
     parse_timestamp_to_seconds,
 )
+from yt_tools.extras import require_extra
 from yt_tools.frames import (
     _ensure_source_mp4,
     _format_subprocess_failure,
@@ -340,6 +341,10 @@ def _render_spectrogram(
     linear: bool = False,
 ) -> None:
     """Render mel-spectrogram (or linear STFT if ``linear=True``) to ``out_path`` PNG."""
+    # matplotlib is only needed to *draw*: a librosa-only install can still do every
+    # other yt-listen path (features, BPM/key, WAV) — refuse precisely here, where the
+    # stack is actually required (D4), instead of at the entry point.
+    require_extra("yt-listen --spectrogram", "audio", modules=("matplotlib",))
     import librosa
     import librosa.display  # noqa: F401  side-effect: registers display helpers
     import matplotlib
@@ -648,17 +653,23 @@ def run(
     out_dir.mkdir(parents=True, exist_ok=True)
     cache_root = out_dir.parent
 
-    if mode == "timestamps":
-        if not timestamps:
-            raise ValueError("mode=timestamps requires --timestamps")
-        seconds_list = list(timestamps)
-    elif mode == "interval":
-        if not interval:
-            raise ValueError("mode=interval requires --interval")
-        meta = fetch_video_metadata(url)
-        seconds_list = interval_timestamps(meta["duration"], interval)
-    else:
+    # The caller's own arguments are validated first: a bad command must not be
+    # answered with "install an extra" (D4). Then the environment — librosa is
+    # needed by every path, and the refusal must come before any download.
+    if mode not in ("timestamps", "interval"):
         raise ValueError(f"unknown mode: {mode!r}")
+    if mode == "timestamps" and not timestamps:
+        raise ValueError("mode=timestamps requires --timestamps")
+    if mode == "interval" and not interval:
+        raise ValueError("mode=interval requires --interval")
+
+    require_extra("yt-listen", "audio", modules=("librosa",))
+
+    if mode == "timestamps":
+        seconds_list = list(timestamps)  # type: ignore[arg-type]
+    else:
+        meta = fetch_video_metadata(url)
+        seconds_list = interval_timestamps(meta["duration"], interval)  # type: ignore[arg-type]
 
     if not seconds_list:
         return []

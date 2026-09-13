@@ -1,7 +1,7 @@
 ---
 name: using-yt-tools
-version: 0.6.0
-description: Seven flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. **OCR** (`yt-ocr`, silent-with-text fallback) — RapidOCR PP-OCRv5 over cached frames → `[mm:ss]` blocks as a transcript substitute when `yt-transcript` is empty or the video is silent-instructional (burned-in captions, schematic labels, chord matrices). Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", "read text from frames", "OCR this video", "what does the caption say", "extract overlay text", "captions burned in", "прочти текст с кадров", "OCR этого видео", "silent video с текстом", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
+version: 0.22.0
+description: Seven flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. **OCR** (`yt-ocr`, silent-with-text fallback) — RapidOCR PP-OCRv5 over cached frames → `[mm:ss]` blocks as a transcript substitute when `yt-transcript` is empty or the video is silent-instructional (burned-in captions, schematic labels, chord matrices). Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", "read text from frames", "OCR this video", "what does the caption say", "extract overlay text", "captions burned in", "прочти текст с кадров", "OCR этого видео", "silent video с текстом", or any youtube.com URL. CLI installed once per machine with pipx (`pipx install 'yt-tools[full]'` adds the audio/chord stack); `yt-tools doctor` is the read-only preflight that names whatever is missing. YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
 # using-yt-tools
@@ -110,7 +110,8 @@ Seven distinct flows, picked by user intent:
   missing on the running yt-tools install, `yt-ocr` exits nonzero with
   both install hints (`pipx inject yt-tools rapidocr onnxruntime` /
   `pip install 'yt-tools[ocr]'`). The plugin's SessionStart hook
-  installs the core `[full]` extras only, **not** `[ocr]` — first run
+  installs `[full]` (core + `[frames]` + `[audio]` + `bpm-detector`)
+  only, **not** `[ocr]` — first run
   of Flow F on a machine may need the inject step.
 - Trigger phrases: "read text from frames", "OCR this video", "what
   does the caption say", "extract overlay text", "captions burned in",
@@ -118,16 +119,12 @@ Seven distinct flows, picked by user intent:
   этого видео», «извлеки текст с кадров», «текст на экране в видео»,
   «silent video с текстом».
 
-All seven flows assume the `yt-tools` CLI is installed. When this skill
-ships as part of the `yt-tools` Claude Code plugin, the `SessionStart`
-hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` automatically
-on the first session after plugin install (installs from the plugin's
-local clone, not PyPI; falls back to core install if the `[full]` extras
-fetch fails). When the skill is used standalone, the user installs from
-the Git repo themselves (see Prerequisites → Installing the CLI). Binaries
-may or may not be on the current session's PATH — that's
-normal, especially right after a fresh `winget install` or `pipx
-ensurepath` (PATH is per-shell, not picked up by the *current* shell).
+All seven flows assume the `yt-tools` CLI is installed — once per machine,
+with pipx (see Prerequisites → Installing the CLI). If a host hook is
+available it may do that install for you (the bundled Claude Code plugin
+does), but no flow depends on one. Binaries may or may not be on the current
+session's PATH — that's normal, especially right after a fresh `winget install`
+or `pipx ensurepath` (PATH is per-shell, not picked up by the *current* shell).
 **Never abort on a bare `Get-Command yt-frames` / `command -v yt-frames`
 miss** — first run the resolve chain (see Prerequisites → Locating
 binaries).
@@ -136,26 +133,46 @@ binaries).
 
 ### Installing the CLI
 
-Two install paths, both equivalent for skill behaviour:
+Install once per machine — one command, the same in every harness:
 
-1. **Via this plugin (recommended for Claude Code users).** Install the
-   plugin once — `/plugin install yt-tools@opeitcloc03-claude-plugins` —
-   and the SessionStart hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT"`
-   on the next session, installing yt-tools directly from the plugin's
-   local clone (no PyPI involvement). See the plugin README for marketplace
-   setup.
-2. **Standalone (any environment).** Install directly from the Git repo
-   via pipx:
-   ```bash
-   pipx install git+https://github.com/kzntsv-dev/yt-tools.git
-   ```
-   For chord progression + structural analysis features in `yt-listen`,
-   use the `[full]` extra:
-   ```bash
-   pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
-   ```
+```bash
+pipx install git+https://github.com/kzntsv-dev/yt-tools.git
+```
 
-External binary that is **not** pip-installable in either case:
+For chord progression + structural analysis in `yt-listen`, add the `[full]`
+extra:
+
+```bash
+pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
+```
+
+Some harnesses do this for you: if your host ships the bundled yt-tools plugin
+(Claude Code does), its `SessionStart` hook pipx-installs the `[full]` set from
+the plugin's own clone on the first session after install — no PyPI
+involvement, and a blocked `[full]` VCS fetch falls back to `[frames,audio]`,
+where every flow except OCR still works. A hook is a convenience, not a
+requirement: the two commands above are the contract.
+
+### First run on a machine: `yt-tools doctor`
+
+Before the first flow — and whenever a flow failed for an unclear reason — run
+the preflight. It is read-only (installs nothing, creates nothing) and answers
+"what is present, what is missing, and what exactly to run next":
+
+```bash
+yt-tools doctor           # report for a human
+yt-tools doctor --json    # the same report for a machine
+```
+
+Every check carries `status` = `ok` | `warn` | `missing`; the report carries
+`can_proceed` and `next_step` (an exact command). `warn` is a recommendation —
+an unsupported interpreter, an absent `[audio]` — and only a missing external
+binary (`yt-dlp`, `ffmpeg`) blocks. Exit code: `0` when `can_proceed` is true,
+`1` when a blocker stands; `--json` never changes it. Act on `next_step`
+instead of guessing: it names the per-OS ffmpeg command, the `pipx inject` line
+for a missing extra, or the release-drift fix.
+
+External binary that is **not** pip-installable either way:
 
 - **ffmpeg** — required for source video caching and per-clip extraction.
   Per-OS install: `winget install Gyan.FFmpeg` (Windows), `brew install
@@ -198,8 +215,8 @@ the optional `[ocr]` extra):
    # For chord progression / structure analysis (optional):
    # pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
    ```
-   If you are inside Claude Code, prefer the plugin path instead — install
-   `yt-tools@opeitcloc03-claude-plugins` and the bundled SessionStart hook
+   If your host ships the bundled plugin (Claude Code users: install
+   `yt-tools@opeitcloc03-claude-plugins`), prefer it — its SessionStart hook
    does the pipx install from the plugin's local clone automatically.
 
 **ffmpeg**:
@@ -212,10 +229,10 @@ the optional `[ocr]` extra):
 4. Linux: `/usr/bin/ffmpeg` (apt) or `/usr/local/bin/ffmpeg`.
 5. If no location resolves — print the per-OS install hint
    (`winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install
-   ffmpeg`) and stop. **Do not** ask the user to restart Claude Code —
+   ffmpeg`) and stop. **Do not** ask the user to restart their host —
    continue the resolve logic in the same session once ffmpeg is
-   installed, or note that the next CC session will pick it up on PATH
-   refresh.
+   installed, or note that the next session picks it up on a PATH
+   refresh. `yt-tools doctor` prints the same per-OS command.
 
 ### Invoke pattern
 
@@ -256,6 +273,29 @@ prepend is needed — invoke normally.
 | D — metadata | YouTube URL or bare 11-char video id | `--out PATH` |
 | E — comments | YouTube URL or bare 11-char video id | `--max N` (default 50; higher = slower); `--sort {top,new}` (default top); `--out PATH` |
 | F — OCR | YouTube URL or bare 11-char video id (frames in cache, or pass `--timestamps`) | `--timestamps T1,T2,…` (extract via internal yt-frames then OCR); `--language {en,ru,ja,zh,multi}` (default `en`); `--out PATH` |
+
+**Frame budget.** Auto-selected frames (`--mode scene`, `--mode interval`, and
+`yt-watch`) are capped at **100 per call** and evenly thinned with the first and
+last frame always kept — a cut-heavy clip can't hand you hundreds of frames, and
+a long clip keeps its tail. `--max-frames N` changes the budget, `--max-frames 0`
+disables it, and an explicit `--timestamps` list is **never** capped or thinned
+(your own choice stays yours). Thinning is reported on stderr. `yt-watch` obeys
+the same budget for the frames it embeds, with the same `--max-frames` /
+`--no-dedup` flags; its `watch.md` links **only** the survivors (dropped
+candidates are deleted, so every link is a readable file) and `yt-watch` stdout
+stays one line — the path of `watch.md`.
+
+A static clip (talking head, screencast, one long take) has almost no cuts, so
+scene detection alone would hand you **one frame for the whole video**. When
+fewer than **8** scenes are detected, the same budget goes into an even scan of
+the timeline instead, announced on stderr — you always know whether you are
+looking at scenes or at a uniform scan.
+
+Near-duplicates (the same slide held on screen) are dropped **before** the cap, so
+the budget buys frames that differ instead of copies: 16×16 grayscale thumbnail,
+mean-abs-diff against the last kept frame, threshold 2.0/255, fail-open. `--no-dedup`
+turns it off. Frames you never get are not printed as `Wrote:` — stdout lists only
+what is on disk and readable.
 
 Flows A–E write to `<cwd>/yt-cache/<video-id>/` by default (Flow C into
 the `audio/` sub-directory; Flow F also writes under
@@ -298,7 +338,8 @@ as a snapshot, not a cache.
 1. yt-transcript <url>                        → ./yt-cache/<vid>/transcript.md
 2. Read transcript.md, find [mm:ss] anchors that match the question
 3. yt-frames <url> --timestamps 1:23,4:56,…   → ./yt-cache/<vid>/frames/frame_*.jpg
-4. Read each frame_*.jpg via the vision tool
+4. Read each frame_*.jpg with the host's image reading (vision tool /
+   vision-capable model)
 5. Answer the user, citing both transcript paragraph and frame contents
 ```
 
@@ -314,6 +355,44 @@ CLI):
 
 Warnings and errors go to stderr (`warning: …`, `error: …`); stdout stays
 machine-parseable.
+
+#### Transcript-cue frames — your judgment, not a regex
+
+Scene- and interval-selection both miss the moments a presenter *points at*
+something on screen. Pointing at a slide is a **low** visual change, so the
+scene detector has nothing to fire on ("look here", "as you can see",
+"notice this", «вот здесь», «посмотрите», «обратите внимание»).
+
+Those moments are yours to pick, by reading the transcript. This is a
+judgment call — rhetorical uses ("look, the point is…") are not cues — so
+it is deliberately **not** a regex, and no tool does it for you.
+
+Two-pass recipe, on top of Flow A:
+
+```
+1. yt-transcript <url>                        → ./yt-cache/<vid>/transcript.md   (Flow A step 1)
+2. Read transcript.md and pick the deictic moments yourself
+3. yt-frames <url> --timestamps 4:32,7:10,9:55  → extra frames at exactly those moments
+4. Read those frame_*.jpg alongside the scene frames you already have
+```
+
+The three cues that most often carry a payload, and the ones context says to
+skip:
+
+| Pick a frame when the speaker… | Skip when… |
+|---|---|
+| «look at this / here / at the top-right» | «look, the thing is…» (rhetorical filler) |
+| «as you can see / notice / watch what happens» | «as I said earlier» (back-reference, nothing new on screen) |
+| «this number / this chart / this graph» | «this is important» (no referent) |
+
+Cost: near zero. Step 1 already downloaded `source.mp4`, so the second call
+is a local `ffmpeg -ss`, no re-download and no re-transcription.
+
+Boundary — the second call is **standalone, not additive**: `--timestamps`
+replaces the selection mode and returns only the frames you asked for. It is
+not merged with whatever `--mode scene` produced. If you want both sets, keep
+both directories (or pass `--out` on one of them) — nothing merges them for
+you.
 
 ### Flow B — targeted-frames
 
@@ -409,14 +488,17 @@ All failures abort cleanly; never leave a half-finished state.
 
 | Symptom | Cause | Action |
 |---|---|---|
+| Anything about the environment is unclear (is `ffmpeg` there? which extras are installed?) | — | `yt-tools doctor --json` — read per-check `status`, `can_proceed`, `next_step`; run `next_step` |
 | `yt-transcript` / `yt-frames` not on PATH | yt-tools is installed but the session's PATH does not include the pipx-shim directory | Run the **full** probe chain (PATH → `~/.local/bin/`). Abort and print the install hint **only** if neither location yielded anything. **Do not** reinstall yt-tools when a pipx-shim exists — it's a PATH problem, not a missing package (see What NOT to do). |
 | Flow 0 — `_No results._` body in the search file | YouTube returned zero matches for the query | Reformulate (broaden / drop modifiers / drop non-ASCII) and re-run. Do **not** flip to a different engine — Phase 1 is yt-dlp-only by design. |
 | Flow 0 — every result filtered out by `--min-duration` / `--max-duration` | The post-filter is too tight (e.g. `--min-duration 30:00` on a topic dominated by 5-minute reviews) | Relax the filter and re-run. Results without a numeric `duration` (live streams, some shorts) are dropped by `--min-duration` because we can't prove they meet it. |
 | `yt-dlp not found on PATH` (from a child process) | `yt-dlp` lives in the same pipx venv as `yt-frames`, but the PATH-prepend was not built | Re-build the PATH-prepend (Prerequisites → Invoke pattern) — point `$YTBIN` at the directory where you found `yt-frames`. |
-| `ffmpeg not found on PATH` (from a child process) | ffmpeg is installed but only in the winget cache / Homebrew prefix / etc., not on the session's PATH | Run the ffmpeg resolve per Prerequisites and PATH-prepend. Abort only if no location yielded the binary — then print the per-OS install hint. **Do not** require the user to restart the Claude Code session — the resolve handles it. |
+| `ffmpeg not found on PATH` (from a child process) | ffmpeg is installed but only in the winget cache / Homebrew prefix / etc., not on the session's PATH | Run the ffmpeg resolve per Prerequisites and PATH-prepend. Abort only if no location yielded the binary — then print the per-OS install hint. **Do not** require the user to restart their host — the resolve handles it, and `yt-tools doctor` names the same command. |
 | `yt-dlp source download failed (exit N) \| stderr: …` | Network failure / private / age-gated / region-locked / malformed URL | Print the captured stderr verbatim; do not retry. |
 | `yt-dlp --dump-json failed` | Same, but on the metadata step | Same. |
-| `Subtitles disabled` from `youtube-transcript-api` | The channel disabled captions | Fatal for Flow A — tell the user, suggest Flow B with explicit timestamps if appropriate. If the video also has burned-in text (tutorial / silent-instructional), recommend Flow F (OCR) as a transcript substitute. |
+| `Subtitles disabled` / `no captions in the requested language(s)` / `the transcript API returned nothing usable (ParseError: …)` from `yt-transcript` | Captions are absent (channel-disabled, wrong `--lang`, or YouTube answered with an empty body — the last one used to surface as a bare `no element found: line 1, column 0`). The message names the reason and both fallbacks. | Fatal for Flow A — tell the user the reason, and switch: Flow C (`yt-listen`) for audio, Flow F (`yt-ocr`) for text burned into the frames. Try another `--lang` first only when the reason says the *requested language* is missing. `yt-watch` on the same video does **not** fail — it writes a frames-only `watch.md` with the reason in its header, so read the frames and say that the text layer is absent. |
+| Flow B/D — `yt-frames --mode scene requires the [frames] extra` / `yt-watch requires the [frames] extra` | `scenedetect` / `opencv-python` not in the active pipx venv | Exit code 1, nothing was downloaded. Tell the user the command the CLI printed (`pipx inject yt-tools scenedetect opencv-python` or `pip install 'yt-tools[frames]'`). Fallbacks that need no install: Flow D with an explicit `--timestamps` list, or `--mode interval` (which still runs and announces on stderr that near-duplicate dedup was skipped). |
+| Flow C — `yt-listen requires the [audio] extra` | `librosa` / `matplotlib` not in the active pipx venv | Exit code 1. Same shape: print the command the CLI named. Until it is installed, Flow A (transcript) and Flow F (`yt-ocr`) are the alternatives for this video. |
 | Flow F — `yt-ocr requires the [ocr] extra` | `rapidocr` / `onnxruntime` not in the active pipx venv | Run the inject command the CLI printed: `pipx inject yt-tools rapidocr onnxruntime` (or `pip install 'yt-tools[ocr]'` in non-pipx setups). The plugin's SessionStart hook installs `[full]`, not `[ocr]`, so first run typically needs this. |
 | Flow F — `no cached frames in …/frames` | Batch-on-cache mode but `yt-frames` wasn't run yet (or wrote elsewhere) | Either run `yt-frames URL --mode scene --scene-threshold 12` (or `--mode interval --interval 15s`) first, or re-invoke `yt-ocr URL --timestamps T1,T2,…` to let it do extraction inline. |
 | Flow F — RapidOCR model download fails (offline / firewall) | First-run lazy-download of PP-OCRv5 ONNX weights to `~/.cache/rapidocr/` blocked | Print the captured error; let the user re-run with network access. Don't retry. |
@@ -431,7 +513,7 @@ All failures abort cleanly; never leave a half-finished state.
   - `<video-id>/comments.md` (Flow E)
   - `<video-id>/ocr.md` (Flow F)
   - `<video-id>/source.mp4` (≤ 720p; produced by Flows A/B/C unless `--no-cache-source`; **not** by 0/D/E; produced by Flow F **only** when `--timestamps` triggers extraction)
-  - `<video-id>/frames/frame_<mmss>.jpg` per extracted frame (also re-read by Flow F)
+  - `<video-id>/frames/frame_<mmss>.jpg` per extracted frame (also re-read by Flow F); a sub-second moment carries its milliseconds (`frame_0130_250.jpg` = 90.25 s), so two frames in one second never overwrite each other and stdout's `Wrote:` count equals the files on disk
   - `<video-id>/audio/{clip,spectrum,features}_<mmss>.{wav,png,md}` (Flow C)
 - Flow F also lazy-downloads RapidOCR PP-OCRv5 ONNX weights to
   `~/.cache/rapidocr/` on first invocation with a given `--language`
@@ -445,7 +527,10 @@ All failures abort cleanly; never leave a half-finished state.
   on disk.
 
 Cache hygiene: `yt-tools cache list` shows usage, `yt-tools cache prune
---older-than 7d` clears the old ones.
+--older-than 7d` clears the old ones. A size marked `(lower bound)` means part
+of that directory could not be read — the real figure is larger. If the cache
+root itself is unreadable, both commands name the cause and exit non-zero
+instead of printing a traceback.
 
 ## What NOT to do
 

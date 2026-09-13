@@ -81,6 +81,28 @@ def format_seconds_for_filename(seconds: float) -> str:
     return f"{m:02d}{sec:02d}"
 
 
+def frame_filename(seconds: float) -> str:
+    """Unique, timestamp-derived frame file name: ``frame_<mmss>.jpg``.
+
+    ``format_seconds_for_filename`` keeps only whole seconds, so two timestamps inside
+    one second used to collide in one file name — and ``ffmpeg -y`` silently overwrote
+    the first frame (issue:74). A sub-second moment therefore carries its milliseconds:
+    ``frame_0130.jpg`` for 90.0s, ``frame_0130_250.jpg`` for 90.25s.
+
+    The name is a pure function of the timestamp — never of the run, the list order or
+    what is already on disk. That is what makes ``yt-watch``'s "file already exists,
+    skip extraction" cache honest: a name always means the same moment, so a later run
+    with a different scene list cannot be handed last run's frame for another timestamp.
+
+    Millisecond resolution is the identity of a moment here: two timestamps closer
+    together than a millisecond are the same moment and collapse into one frame.
+    """
+    total_ms = max(0, round(seconds * 1000))
+    whole, millis = divmod(total_ms, 1000)
+    stem = f"frame_{format_seconds_for_filename(whole)}"
+    return f"{stem}.jpg" if millis == 0 else f"{stem}_{millis:03d}.jpg"
+
+
 def parse_timestamp_to_seconds(ts: str) -> int:
     """Parse ``ss``, ``m:ss``, or ``h:mm:ss`` into integer seconds."""
     parts = ts.strip().split(":")

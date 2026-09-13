@@ -3,6 +3,17 @@
 Secondary use-case: a single ``watch.md`` per video that interleaves transcript paragraphs
 with ``![](frames/frame_<mmss>.jpg)`` next to the matching scene boundary, so an agent can
 ``Read`` one document and "see" the video at the moments where it visually changes.
+Two frames inside one second get distinct names (``frame_0130.jpg`` / ``frame_0130_250.jpg``,
+issue:74) and the markdown links exactly the name written to disk.
+
+Frame budget: the frames are auto-selected, so they go through the same pipeline as
+``yt-frames`` — a uniform-scan fallback when the clip is static (contract D6), dedup of
+near-duplicates (D7/D8) and even thinning to ``--max-frames`` (D2/D4), in that order
+(D11). ``watch.md`` therefore carries neither hundreds of frames for a cut-heavy clip nor
+a single frame for a talking head. Candidates the budget drops are removed from disk
+(D15) so every ``![](frames/…)`` link points at a file the agent can actually read;
+counts and the fallback warning go to stderr, because stdout stays the one-line path of
+the artefact.
 """
 
 from __future__ import annotations
@@ -16,21 +27,31 @@ from yt_tools.core import (
     cache_dir_for,
     extract_video_id,
     force_utf8_streams,
-    format_seconds_for_filename,
     format_seconds_to_mmss,
+    frame_filename,
 )
+from yt_tools.extras import require_extra
 from yt_tools.frames import (
+    DEFAULT_MAX_FRAMES,
     DEFAULT_SCENE_THRESHOLD,
-    _detect_scene_timestamps,
+    MIN_SCENE_FRAMES,
     _ensure_source_mp4,
     _ffmpeg_extract_from_file,
+    _remove_quietly,
+    _scene_timestamps_with_fallback,
+    _select_frames,
 )
 from yt_tools.markdown import (
     DEFAULT_PARAGRAPH_GAP_SECONDS,
     Snippet,
     _group_paragraphs,
 )
-from yt_tools.transcript import _fetch_snippets
+from yt_tools.transcript import TranscriptUnavailable, _fetch_snippets
+
+
+# Пояснение в шапке кадрового артефакта: агент читает watch.md, а не stderr, и без
+# этой строки «текста нет» выглядит как «текст не понадобился».
+NO_TRANSCRIPT_NOTE = "Transcript unavailable — frames only"
 
 
 def _render_interleaved(
@@ -43,6 +64,7 @@ def _render_interleaved(
     frame_timestamps: list[float],
     frames_subdir: str = "frames",
     paragraph_gap_seconds: float = DEFAULT_PARAGRAPH_GAP_SECONDS,
+    transcript_note: str | None = None,
 ) -> str:
     paragraphs = _group_paragraphs(snippets, paragraph_gap_seconds)
     duration_str = format_seconds_to_mmss(float(duration)) if duration else "?"
@@ -58,15 +80,19 @@ def _render_interleaved(
         meta_bits.append(f"**URL:** {url}")
     lines.append("  ".join(meta_bits))
     lines.append("")
+    if transcript_note:
+        lines.append(f"_{transcript_note}_")
+        lines.append("")
     lines.append("---")
     lines.append("")
 
     def _emit_image(ts: float) -> None:
-        anchor = format_seconds_for_filename(ts)
         label = format_seconds_to_mmss(ts)
-        lines.append(f"![scene at {label}]({frames_subdir}/frame_{anchor}.jpg)")
+        lines.append(f"![scene at {label}]({frames_subdir}/{frame_filename(ts)})")
         lines.append("")
 
+    # Same helper as the extractor, so the link is the file that is on disk: a second
+    # holding two frames yields two names (issue:74), never one overwritten file.
     frame_iter = iter(sorted(frame_timestamps))
     next_frame: float | None = next(frame_iter, None)
     para_starts = [p[0] for p in paragraphs]
@@ -92,14 +118,40 @@ def _render_interleaved(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _fetch_snippets_or_degrade(video_id: str, languages: list[str]) -> tuple[list[Snippet], str, str | None]:
+    """Transcript, or an empty transcript plus the reason for the markdown header.
+
+    The artefact of this CLI is frames with — when they exist — the text next to them, so
+    a video without captions loses the text, not the frames (requirements AC9). Only the
+    declared refusal degrades; an unexpected bug still fails the run loudly.
+    """
+    try:
+        snippets, lang = _fetch_snippets(video_id, languages)
+    except TranscriptUnavailable as e:
+        print(f"warning: no transcript for this video: {e} — writing frames-only watch.md", file=sys.stderr)
+        return [], "", f"{NO_TRANSCRIPT_NOTE}: {e}"
+    return snippets, lang, None
+
+
 def run(
     url: str,
     out_dir: Path | None = None,
     scene_threshold: float = DEFAULT_SCENE_THRESHOLD,
     languages: list[str] | None = None,
+    max_frames: int | None = DEFAULT_MAX_FRAMES,
+    dedup: bool = True,
 ) -> Path:
+    """Render ``watch.md`` for ``url`` and return its path.
+
+    The embedded frames are auto-selected, so they obey the same budget as
+    ``yt-frames``: ``max_frames`` caps them by even thinning (``None`` / ``0`` disables
+    the cap) and near-duplicates are dropped before the cap unless ``dedup=False``.
+    """
     languages = languages or ["en"]
     video_id = extract_video_id(url)
+    # `yt-watch` is transcript + scene-frames, and scene detection needs the
+    # [frames] extra: refuse before the metadata/transcript fetches (D4).
+    require_extra("yt-watch", "frames")
     if out_dir is None:
         out_dir = cache_dir_for(url)
     frames_dir = out_dir / "frames"
@@ -110,15 +162,55 @@ def run(
         print(f"warning: {e} — using minimal metadata", file=sys.stderr)
         meta = {"title": video_id, "channel": "", "duration": 0, "url": url}
 
-    snippets, lang = _fetch_snippets(video_id, languages)
+    snippets, lang, transcript_note = _fetch_snippets_or_degrade(video_id, languages)
 
     source = _ensure_source_mp4(url, out_dir / "source.mp4")
-    scene_timestamps = _detect_scene_timestamps(source, scene_threshold)
+    # Auto-selection shares yt-frames' entry point: static footage falls back to an even
+    # scan of the timeline instead of handing the agent one frame for the whole video
+    # (D6). A sub-millisecond pair is the same moment and would yield the same file
+    # name, so it is collapsed before extraction rather than linked twice.
+    timestamps = sorted(_scene_timestamps_with_fallback(source, scene_threshold, max_frames))
 
-    for s in scene_timestamps:
-        out_path = frames_dir / f"frame_{format_seconds_for_filename(s)}.jpg"
-        if not out_path.exists():
-            _ffmpeg_extract_from_file(source, s, out_path)
+    candidates: list[tuple[float, Path]] = []
+    seen_names: set[str] = set()
+    failures: list[tuple[float, str]] = []
+    for s in timestamps:
+        name = frame_filename(s)
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        out_path = frames_dir / name
+        try:
+            if not out_path.exists():
+                _ffmpeg_extract_from_file(source, s, out_path)
+        except RuntimeError as e:
+            # Тот же fail-open, что у автоподбора yt-frames: контейнер может обещать
+            # больше секунд, чем декодирует, а терять из-за одного такого кандидата весь
+            # watch.md незачем.
+            failures.append((s, str(e)))
+            continue
+        candidates.append((s, out_path.resolve()))
+
+    if failures:
+        print(
+            f"note: skipped {len(failures)} candidate frame(s) ffmpeg could not extract"
+            f" (first at {failures[0][0]:.3f}s — past the end of the video?)",
+            file=sys.stderr,
+        )
+    if not candidates and failures:
+        # Обратная сторона fail-open: пустой результат — это не «видео без кадров», а
+        # сломанный инструмент. Пустой список моментов (детекция ничего не дала)
+        # ошибкой не считается — тогда честно остаётся только транскрипт.
+        raise RuntimeError(f"no frames extracted: {failures[0][1]}")
+
+    # Dedup then cap (D11); the dropped candidates go away, so every markdown link is a
+    # file on disk (D15). Unlike yt-frames, nothing is printed per frame: the artefact of
+    # this CLI is watch.md, and its stdout contract is a single line.
+    survivors = set(_select_frames([path for _, path in candidates], max_frames, dedup))
+    for _, path in candidates:
+        if path not in survivors:
+            _remove_quietly(path)
+    frame_timestamps = [s for s, path in candidates if path in survivors]
 
     md = _render_interleaved(
         title=meta["title"],
@@ -127,7 +219,8 @@ def run(
         lang=lang,
         url=meta["url"],
         snippets=snippets,
-        frame_timestamps=scene_timestamps,
+        frame_timestamps=frame_timestamps,
+        transcript_note=transcript_note,
     )
     watch_md = out_dir / "watch.md"
     watch_md.write_text(md, encoding="utf-8")
@@ -149,11 +242,41 @@ def main(argv: list[str] | None = None) -> int:
         help=f"PySceneDetect ContentDetector threshold (default {DEFAULT_SCENE_THRESHOLD}).",
     )
     parser.add_argument("--lang", default="en", help="Comma-separated language preference (default: en).")
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=DEFAULT_MAX_FRAMES,
+        help=(
+            f"Cap on auto-selected embedded frames, default {DEFAULT_MAX_FRAMES}: evenly "
+            "thinned, first and last kept, tail never dropped. 0 disables the cap (a "
+            f"uniform fallback scan stays at {MIN_SCENE_FRAMES} frames - 'every frame of "
+            "the video' is no scan at all)."
+        ),
+    )
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help=(
+            "Keep near-duplicate embedded frames. Dedup is ON by default "
+            "(16x16 grayscale thumbnail, mean-abs-diff vs the last kept frame, "
+            "threshold 2.0/255)."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.max_frames < 0:
+        parser.error("--max-frames must be >= 0 (0 disables the cap)")
 
     languages = [lang.strip() for lang in args.lang.split(",") if lang.strip()]
     try:
-        path = run(args.url, out_dir=args.out, scene_threshold=args.scene_threshold, languages=languages)
+        path = run(
+            args.url,
+            out_dir=args.out,
+            scene_threshold=args.scene_threshold,
+            languages=languages,
+            max_frames=args.max_frames,
+            dedup=not args.no_dedup,
+        )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

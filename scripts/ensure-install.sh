@@ -104,18 +104,19 @@ if [ "$needs_install" = "true" ]; then
             log "WARN: pipx uninstall yt-tools failed; will attempt install anyway."
     fi
 
-    # Install with [full] extras (chord progression + structure detection via
-    # bpm-detector); fall back to core if the VCS dep fetch fails (corporate
-    # proxy blocking PEP 508 direct refs, transient network, etc.). Flows A
-    # and B work in either mode; Flow C runs librosa-only without [full].
+    # Install with [full] extras — core + [frames] + [audio] + bpm-detector
+    # (chord progression + structure detection). [ocr] stays opt-in. If the
+    # VCS dep fetch fails (corporate proxy blocking PEP 508 direct refs,
+    # transient network), fall back to core + [frames,audio]: every flow
+    # except [ocr] still works, Flow C runs the librosa-only path.
     pipx_args=(install)
     if [ -n "${YT_TOOLS_PYTHON:-}" ]; then
         pipx_args+=(--python "$YT_TOOLS_PYTHON")
     fi
     if ! pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
-        log "WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to core install."
-        if ! pipx_run "${pipx_args[@]}" "$PLUGIN_ROOT" >&2; then
-            log "WARN: core install also failed. Investigate pipx state."
+        log "WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to [frames,audio] install."
+        if ! pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[frames,audio]" >&2; then
+            log "WARN: [frames,audio] install also failed. Investigate pipx state."
         fi
     fi
 fi

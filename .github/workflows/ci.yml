@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: pytest (full extras)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The heavy stacks are installed on purpose: a handful of tests exercise the
+      # real audio pipeline rather than a mock, and a suite that is red on a clean
+      # machine teaches everyone to ignore it. The light-core contract is covered
+      # by the gate job below, which runs without any extra.
+      - name: Install
+        run: pip install -e ".[full,test]"
+      - name: Unit + CLI smoke tests
+        run: pytest -q
+
+  gate:
+    name: install contract (AC4/AC5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Runs itself inside python:3.12-slim: core install without extras, once
+      # without ffmpeg and once with a real static one, then checks that `warn`
+      # and `missing` stay machine-distinguishable in one --json payload.
+      - name: Core-install gate
+        run: bash scripts/check-core-install.sh

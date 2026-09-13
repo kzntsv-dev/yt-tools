@@ -9,6 +9,7 @@ from yt_tools.core import (
     extract_video_id,
     format_seconds_for_filename,
     format_seconds_to_mmss,
+    frame_filename,
     parse_timestamp_to_seconds,
 )
 
@@ -122,3 +123,43 @@ class TestCacheDirFor:
         d = cache_dir_for("https://youtu.be/abcDEF12345", base=tmp_path)
         assert d.parent.name == "yt-cache"
         assert d.parent.parent == tmp_path
+
+
+# --- Имена кадров (task:2782, issue:74) --------------------------------------
+
+def test_frame_filename_is_plain_for_whole_seconds():
+    assert frame_filename(90.0) == "frame_0130.jpg"
+    assert frame_filename(0.0) == "frame_0000.jpg"
+    assert frame_filename(3661.0) == "frame_010101.jpg"
+
+
+def test_frame_filename_carries_subseconds_for_fractional_timestamps():
+    # До правки 90.1 и 90.25 писались в один файл `frame_0130.jpg`, и ffmpeg -y молча
+    # затирал первый кадр.
+    assert frame_filename(90.1) == "frame_0130_100.jpg"
+    assert frame_filename(90.25) == "frame_0130_250.jpg"
+    assert frame_filename(90.999) == "frame_0130_999.jpg"
+
+
+def test_frame_filename_is_a_pure_function_of_the_timestamp():
+    # Ни списка таймкодов, ни состояния диска: имя зависит только от момента, иначе
+    # кэш `yt-watch` («файл есть — не извлекаем») подсунул бы чужой кадр.
+    assert frame_filename(12.4) == frame_filename(12.4)
+    assert frame_filename(12.4) != frame_filename(12.1)
+    assert frame_filename(12.4) != frame_filename(12.0)
+
+
+def test_frame_filename_rounds_to_milliseconds_without_spilling_into_the_next_second():
+    assert frame_filename(12.9996) == "frame_0013.jpg"
+    assert frame_filename(-1.5) == "frame_0000.jpg"
+
+
+def test_frame_filename_stem_matches_the_ocr_contract():
+    # yt-ocr читает `^frame_(\d{4}|\d{6})(?:_\d{3})?\.jpg$`: ширина основы не должна
+    # уехать (часы добавляют две цифры), иначе кадр молча выпадет из OCR.
+    assert frame_filename(0.0).split("_", 1)[1].split(".")[0].isdigit()
+    # до 99:59:59 (за этой границей `format_seconds_for_filename` расширяет часы —
+    # предсуществующее поведение, для 100-часового ролика yt-ocr такие кадры пропустит)
+    for seconds in (0.0, 59.9, 3599.0, 3600.5, 356399.0):
+        stem = frame_filename(seconds).removeprefix("frame_").split(".")[0]
+        assert len(stem.split("_")[0]) in (4, 6), frame_filename(seconds)
